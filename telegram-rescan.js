@@ -82,6 +82,49 @@ async function listForumTopics(client, chat) {
     }
 }
 
+function describeChat(entity) {
+    if (!entity) return 'unknown';
+    const className = entity.className || (entity.constructor ? entity.constructor.name : 'unknown');
+    const title = entity.title || entity.username || entity.firstName || '';
+    const username = entity.username ? `@${entity.username}` : '';
+    const id = entity.id ? entity.id.toString() : '';
+    return `${className} [${id}] ${title} ${username}`.trim();
+}
+
+async function getLinkedDiscussionGroup(client, chat) {
+    try {
+        if (!chat || !chat.id || chat.className !== 'Channel') return null;
+        const full = await client.invoke(new Api.channels.GetFullChannel({ channel: chat }));
+        const linkedChatId = full && full.fullChat ? full.fullChat.linkedChatId : null;
+        if (!linkedChatId) return null;
+        const linked = (full.chats || []).find(item => item && item.id && item.id.toString() === linkedChatId.toString());
+        return linked || null;
+    } catch {
+        return null;
+    }
+}
+
+async function listCandidateDialogs(client, hint) {
+    try {
+        const dialogs = await client.getDialogs({ limit: 200 });
+        const matches = [];
+        const keywords = ['backup', 'webaff', 'aff', 'video'];
+        if (hint) keywords.push(hint.replace(/^@/, '').toLowerCase());
+        for (const dialog of dialogs) {
+            const entity = dialog.entity || dialog;
+            const title = (entity.title || entity.username || entity.firstName || '').toLowerCase();
+            const username = (entity.username || '').toLowerCase();
+            const hit = keywords.some(kw => title.includes(kw) || username.includes(kw));
+            if (hit) {
+                matches.push(entity);
+            }
+        }
+        return matches;
+    } catch {
+        return [];
+    }
+}
+
 async function scanMessages(client, chat, { logger, replyTo = null, label = 'chat' } = {}) {
     const records = [];
     let processed = 0;
@@ -162,24 +205,45 @@ async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
         throw new Error(`Gagal mengambil entity chat ${config.backupChat}: ${error.message || error}`);
     }
 
-    let allRecords = [];
-    const topics = await listForumTopics(client, chat);
+    logger(`Chat target: ${describeChat(chat)}`);
 
-    if (topics && topics.length) {
-        logger(`Forum topics terdeteksi: ${topics.length} topic. Memindai per topic plus general...`);
-        for (const topic of topics) {
-            const records = await scanMessages(client, chat, {
-                logger,
-                replyTo: topic.id,
-                label: `topic ${topic.id} - ${topic.title || ''}`
-            });
+    const chatsToScan = [{ chat, label: 'primary' }];
+    const linked = await getLinkedDiscussionGroup(client, chat);
+    if (linked) {
+        logger(`Channel terhubung dengan discussion group: ${describeChat(linked)}. Akan ikut dipindai.`);
+        chatsToScan.push({ chat: linked, label: 'linked-discussion' });
+    }
+
+    const candidates = await listCandidateDialogs(client, config.backupChat);
+    if (candidates.length) {
+        logger(`Kandidat chat lain di akun yang mungkin terkait backup (untuk referensi):`);
+        for (const candidate of candidates) {
+            logger(`  - ${describeChat(candidate)}`);
+        }
+    }
+
+    let allRecords = [];
+    for (const target of chatsToScan) {
+        const targetChat = target.chat;
+        const baseLabel = target.label;
+        const topics = await listForumTopics(client, targetChat);
+        if (topics && topics.length) {
+            logger(`[${baseLabel}] Forum topics terdeteksi: ${topics.length} topic. Memindai per topic plus general...`);
+            for (const topic of topics) {
+                const records = await scanMessages(client, targetChat, {
+                    logger,
+                    replyTo: topic.id,
+                    label: `${baseLabel} topic ${topic.id} - ${topic.title || ''}`
+                });
+                allRecords = allRecords.concat(records);
+            }
+            const generalRecords = await scanMessages(client, targetChat, { logger, label: `${baseLabel} general` });
+            allRecords = allRecords.concat(generalRecords);
+        } else {
+            logger(`[${baseLabel}] Bukan forum atau tidak ada topic. Memindai seluruh pesan chat...`);
+            const records = await scanMessages(client, targetChat, { logger, label: `${baseLabel} chat` });
             allRecords = allRecords.concat(records);
         }
-        const generalRecords = await scanMessages(client, chat, { logger, label: 'general' });
-        allRecords = allRecords.concat(generalRecords);
-    } else {
-        logger('Bukan forum atau tidak ada topic. Memindai seluruh pesan chat...');
-        allRecords = await scanMessages(client, chat, { logger, label: 'chat' });
     }
 
     await client.disconnect();

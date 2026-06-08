@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const os = require('os');
 const childProcess = require('child_process');
 const telegramBackup = require('./telegram-backup');
+const telegramRescan = require('./telegram-rescan');
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
@@ -2314,6 +2315,24 @@ async function handleApi(req, res, url) {
                 }
             }
             sendJson(res, 200, { ok: true, queued, message: `${queued} video dijadwalkan backup.` });
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/admin/telegram-backups/rescan') {
+            try {
+                const result = await telegramRescan.rescan({
+                    logger: msg => console.log(`[rescan] ${msg}`)
+                });
+                sendJson(res, 200, {
+                    ok: true,
+                    scannedMessages: result.scannedMessages,
+                    videoCount: result.videoCount,
+                    folderCount: result.folderCount,
+                    message: `Rescan selesai. ${result.videoCount} video dan ${result.folderCount} folder ditemukan.`
+                });
+            } catch (error) {
+                sendError(res, 500, error.message || 'Rescan Telegram gagal.');
+            }
             return;
         }
 

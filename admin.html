@@ -128,7 +128,8 @@
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <p id="telegramBackupMeta" class="text-xs sm:text-sm text-neutral-500">Memuat status backup...</p>
-                    <div class="flex gap-2">
+                    <div class="flex flex-wrap gap-2">
+                        <button id="rescanBackupBtn" type="button" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Rescan Telegram</button>
                         <button id="backupAllBtn" type="button" class="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Backup All</button>
                         <button id="restoreAllBtn" type="button" class="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Restore All</button>
                     </div>
@@ -594,6 +595,7 @@
             const backupDetailsBody = document.getElementById('backupDetailsBody');
             const backupAllBtn = document.getElementById('backupAllBtn');
             const restoreAllBtn = document.getElementById('restoreAllBtn');
+            const rescanBackupBtn = document.getElementById('rescanBackupBtn');
             const folderDropdownBtn = document.getElementById('folderDropdownBtn');
             const folderDropdownBody = document.getElementById('folderDropdownBody');
             const folderDropdownIcon = document.getElementById('folderDropdownIcon');
@@ -1643,6 +1645,21 @@
                 } finally {
                     backupAllBtn.disabled = false;
                     backupAllBtn.innerText = 'Backup All';
+                }
+            });
+            rescanBackupBtn.addEventListener('click', async () => {
+                if (!confirm('Pindai grup Telegram backup dan rebuild data video/folder dari caption WEBAPP_BACKUP? Ini akan menimpa data video/folder lokal yang ada.')) return;
+                try {
+                    rescanBackupBtn.disabled = true;
+                    rescanBackupBtn.innerText = 'Memindai...';
+                    const result = await api('/api/admin/telegram-backups/rescan', { method: 'POST' });
+                    await loadData();
+                    showToast(result.message || `Rescan selesai. ${result.videoCount || 0} video.`);
+                } catch (error) {
+                    showToast(error.message || 'Rescan Telegram gagal.', true);
+                } finally {
+                    rescanBackupBtn.disabled = false;
+                    rescanBackupBtn.innerText = 'Rescan Telegram';
                 }
             });
             restoreAllBtn.addEventListener('click', async () => {

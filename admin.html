@@ -1565,85 +1565,24 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
-                const segmentSize = 4 * 1024 * 1024;
-                const concurrency = 4;
-                const maxRetries = 4;
-                const totalSegments = Math.max(1, Math.ceil(file.size / segmentSize));
-
+                const chunkSize = 6 * 1024 * 1024;
+                const totalChunks = Math.ceil(file.size / chunkSize);
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, uploadType })
                 });
 
-                let uploadedBytes = 0;
-                let nextSegmentIndex = 0;
-                let aborted = null;
-
-                async function uploadOneSegment(segmentIndex) {
-                    const offset = segmentIndex * segmentSize;
-                    const slice = file.slice(offset, Math.min(file.size, offset + segmentSize));
-                    const length = slice.size;
-                    const buffer = await slice.arrayBuffer();
-
-                    let lastError = null;
-                    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
-                        if (aborted) return;
-                        try {
-                            const response = await fetch(`/api/admin/uploads/${start.uploadId}/segment`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/octet-stream',
-                                    'X-Offset': String(offset),
-                                    'X-Length': String(length),
-                                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                                },
-                                body: buffer
-                            });
-                            if (!response.ok) {
-                                const errBody = await response.json().catch(() => ({}));
-                                throw new Error(errBody.error || `HTTP ${response.status}`);
-                            }
-                            uploadedBytes += length;
-                            const pct = Math.min(99, Math.round((uploadedBytes / file.size) * 100));
-                            progressLabel(`Mengupload ${file.name} ${pct}%`);
-                            lastError = null;
-                            break;
-                        } catch (error) {
-                            lastError = error;
-                            if (aborted) return;
-                            const backoff = 800 * Math.pow(2, attempt);
-                            progressLabel(`Retry ${file.name} segment ${segmentIndex + 1}/${totalSegments} (${attempt + 1}/${maxRetries})...`);
-                            await new Promise(resolve => setTimeout(resolve, backoff));
-                        }
-                    }
-                    if (lastError) throw lastError;
+                for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                    const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
+                    const dataUrl = await readBlobAsDataUrl(chunk);
+                    progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
+                    await api(`/api/admin/uploads/${start.uploadId}/chunk`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chunkIndex, dataUrl })
+                    });
                 }
-
-                const workers = [];
-                for (let w = 0; w < concurrency; w += 1) {
-                    workers.push((async () => {
-                        while (!aborted) {
-                            const idx = nextSegmentIndex;
-                            if (idx >= totalSegments) return;
-                            nextSegmentIndex += 1;
-                            try {
-                                await uploadOneSegment(idx);
-                            } catch (error) {
-                                aborted = error;
-                                throw error;
-                            }
-                        }
-                    })());
-                }
-
-                try {
-                    await Promise.all(workers);
-                } catch (error) {
-                    throw aborted || error;
-                }
-
-                progressLabel(`Mengupload ${file.name} 100%`);
                 return start.uploadId;
             }
 

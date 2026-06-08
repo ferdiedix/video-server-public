@@ -2529,6 +2529,41 @@ async function handleApi(req, res, url) {
             return;
         }
 
+        const simpleUploadMatch = url.pathname.match(/^\/api\/admin\/uploads\/([^/]+)\/upload$/);
+        if (req.method === 'POST' && simpleUploadMatch) {
+            const upload = uploadSessions.get(simpleUploadMatch[1]);
+            if (!upload) {
+                sendError(res, 404, 'Sesi upload tidak ditemukan.');
+                return;
+            }
+
+            markUploadActive();
+            try {
+                const writeStream = fsNative.createWriteStream(upload.tempPath, { flags: 'w' });
+                let received = 0;
+                await new Promise((resolve, reject) => {
+                    req.on('data', chunk => {
+                        received += chunk.length;
+                        try { appNetworkCounter.rx += chunk.length; } catch {}
+                    });
+                    req.on('error', reject);
+                    writeStream.on('error', reject);
+                    writeStream.on('finish', resolve);
+                    req.pipe(writeStream);
+                });
+
+                upload.receivedBytes = received;
+                sendJson(res, 200, { receivedBytes: received });
+            } catch (error) {
+                if (!res.headersSent) {
+                    sendError(res, 500, error.message || 'Gagal menyimpan file.');
+                }
+            } finally {
+                markUploadIdle();
+            }
+            return;
+        }
+
         const segmentMatch = url.pathname.match(/^\/api\/admin\/uploads\/([^/]+)\/segment$/);
         if (req.method === 'POST' && segmentMatch) {
             const upload = uploadSessions.get(segmentMatch[1]);

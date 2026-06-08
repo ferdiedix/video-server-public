@@ -1587,7 +1587,8 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
-                const chunkSize = 90 * 1024 * 1024;
+                const chunkSize = 8 * 1024 * 1024;
+                const concurrency = 4;
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',
@@ -1596,20 +1597,42 @@
                 });
 
                 try {
-                    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                    let nextChunkIndex = 0;
+                    let uploadedBytes = 0;
+
+                    async function uploadSegment(chunkIndex) {
                         const offset = chunkIndex * chunkSize;
                         const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-                        progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
-                        await api(`/api/admin/uploads/${start.uploadId}/segment`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/octet-stream',
-                                'X-Offset': String(offset),
-                                'X-Length': String(chunk.size)
-                            },
-                            body: chunk
-                        });
+                        for (let attempt = 1; attempt <= 3; attempt += 1) {
+                            try {
+                                await api(`/api/admin/uploads/${start.uploadId}/segment`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/octet-stream',
+                                        'X-Offset': String(offset),
+                                        'X-Length': String(chunk.size)
+                                    },
+                                    body: chunk
+                                });
+                                uploadedBytes += chunk.size;
+                                progressLabel(`Mengupload ${file.name} ${Math.round((uploadedBytes / file.size) * 100)}%`);
+                                return;
+                            } catch (error) {
+                                if (attempt >= 3) throw error;
+                                await new Promise(resolve => setTimeout(resolve, attempt * 700));
+                            }
+                        }
                     }
+
+                    async function worker() {
+                        while (nextChunkIndex < totalChunks) {
+                            const chunkIndex = nextChunkIndex;
+                            nextChunkIndex += 1;
+                            await uploadSegment(chunkIndex);
+                        }
+                    }
+
+                    await Promise.all(Array.from({ length: Math.min(concurrency, totalChunks) }, () => worker()));
                     return start.uploadId;
                 } catch (error) {
                     console.warn('Upload binary gagal, fallback ke upload lama:', error);

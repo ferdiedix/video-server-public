@@ -2106,6 +2106,25 @@ function parseDataUrl(dataUrl) {
     };
 }
 
+function hasCompleteUploadSegments(upload) {
+    if (!upload || !upload.totalSize) return false;
+    if (!upload.receivedSegments || !upload.receivedSegments.size) {
+        return Number(upload.receivedBytes || 0) >= Number(upload.totalSize || 0);
+    }
+
+    const segments = [...upload.receivedSegments.entries()]
+        .map(([offset, length]) => ({ offset: Number(offset), length: Number(length) }))
+        .filter(item => Number.isFinite(item.offset) && Number.isFinite(item.length) && item.length > 0)
+        .sort((a, b) => a.offset - b.offset);
+
+    let expectedOffset = 0;
+    for (const segment of segments) {
+        if (segment.offset !== expectedOffset) return false;
+        expectedOffset += segment.length;
+    }
+    return expectedOffset === upload.totalSize;
+}
+
 async function handleApi(req, res, url) {
     if (req.method === 'POST' && url.pathname === '/api/admin/login') {
         const lock = await getLoginLock(req);
@@ -2693,6 +2712,23 @@ async function handleApi(req, res, url) {
                 : [String(body.adUrl || '').trim()].filter(Boolean);
             const adUrl = adUrls[0] || '';
             const requiredClicks = Math.max(1, Math.min(10, Number(body.requiredClicks || adUrls.length || 1)));
+
+            if (!hasCompleteUploadSegments(upload)) {
+                sendError(res, 400, 'Upload image belum lengkap. Coba ulang upload.');
+                return;
+            }
+
+            try {
+                const tempStat = await fs.stat(upload.tempPath);
+                if (tempStat.size !== upload.totalSize) {
+                    sendError(res, 400, 'Ukuran file image belum lengkap. Coba ulang upload.');
+                    return;
+                }
+            } catch {
+                sendError(res, 400, 'File upload sementara tidak ditemukan.');
+                return;
+            }
+
             const detectedExtension = await detectImageExtension(upload.tempPath);
             if (!detectedExtension) {
                 await removeFile(upload.tempPath);
@@ -2763,6 +2799,22 @@ async function handleApi(req, res, url) {
             const adUrl = adUrls[0] || '';
             const folderId = body.folderId ? String(body.folderId) : null;
             const requiredClicks = Math.max(1, Math.min(10, Number(body.requiredClicks || adUrls.length || 1)));
+
+            if (!hasCompleteUploadSegments(upload)) {
+                sendError(res, 400, 'Upload video belum lengkap. Coba ulang upload.');
+                return;
+            }
+
+            try {
+                const tempStat = await fs.stat(upload.tempPath);
+                if (tempStat.size !== upload.totalSize) {
+                    sendError(res, 400, 'Ukuran file upload belum lengkap. Coba ulang upload.');
+                    return;
+                }
+            } catch {
+                sendError(res, 400, 'File upload sementara tidak ditemukan.');
+                return;
+            }
 
             if (!title || !adUrls.length || upload.receivedBytes < 1) {
                 sendError(res, 400, 'Data video tidak lengkap.');

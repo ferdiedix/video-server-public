@@ -436,12 +436,35 @@ async function getNetworkSample() {
     }
 }
 
+function detectCpuCount() {
+    const fromOs = os.cpus().length || 0;
+    if (fromOs > 1) return fromOs;
+
+    try {
+        const possibleEntries = fsNative.readdirSync('/sys/devices/system/cpu');
+        const matches = possibleEntries.filter(name => /^cpu\d+$/.test(name));
+        if (matches.length > 0) return matches.length;
+    } catch {
+        // ignore
+    }
+
+    try {
+        const cpuinfo = fsNative.readFileSync('/proc/cpuinfo', 'utf8');
+        const processors = cpuinfo.split(/\r?\n/).filter(line => /^processor\s*:/i.test(line));
+        if (processors.length > 0) return processors.length;
+    } catch {
+        // ignore
+    }
+
+    return Math.max(1, fromOs);
+}
+
 async function getServerStatus() {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     const load = os.loadavg();
-    const cpuCount = os.cpus().length || 1;
+    const cpuCount = detectCpuCount();
     const storage = await getStorageStatus();
     const network = await getNetworkSample();
 
@@ -901,7 +924,7 @@ function runFfmpegThumbnail({ inputPath, outputPath }) {
 }
 
 function getCompressionThreadCount() {
-    const cores = Math.max(1, os.cpus().length || 1);
+    const cores = Math.max(1, detectCpuCount());
     const target = Math.max(1, Math.floor((cores * COMPRESS_CPU_PERCENT) / 100));
     return Math.min(cores, target);
 }

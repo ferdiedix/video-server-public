@@ -51,6 +51,13 @@ const compressionState = {
     history: [],
     current: null
 };
+let videoRestoreQueue = Promise.resolve();
+const videoRestorePending = new Set();
+const restoreState = {
+    queue: [],
+    history: [],
+    current: null
+};
 let mediaFileNameMigrationPromise = null;
 
 const contentTypes = {
@@ -400,40 +407,107 @@ async function getStorageStatus() {
     };
 }
 
-async function getNetworkSample() {
+async function readNetworkCounters() {
+    // 1) /proc/net/dev (works on most Linux/Termux when accessible)
     try {
         const raw = await fs.readFile('/proc/net/dev', 'utf8');
         const lines = raw.split(/\r?\n/).slice(2);
         let rx = 0;
         let tx = 0;
-
-        lines.forEach(line => {
+        let parsed = false;
+        for (const line of lines) {
             const cleaned = line.trim();
-            if (!cleaned || cleaned.startsWith('lo:')) return;
+            if (!cleaned || cleaned.startsWith('lo:')) continue;
             const parts = cleaned.replace(':', ' ').trim().split(/\s+/);
-            rx += Number(parts[1] || 0);
-            tx += Number(parts[9] || 0);
-        });
-
-        const now = Date.now();
-        const previous = lastNetworkSample;
-        lastNetworkSample = { rx, tx, at: now };
-
-        if (!previous) {
-            return { rx, tx, rxPerSecond: 0, txPerSecond: 0, available: true };
+            const r = Number(parts[1] || 0);
+            const t = Number(parts[9] || 0);
+            if (!Number.isFinite(r) || !Number.isFinite(t)) continue;
+            rx += r;
+            tx += t;
+            parsed = true;
         }
-
-        const seconds = Math.max(1, (now - previous.at) / 1000);
-        return {
-            rx,
-            tx,
-            rxPerSecond: Math.max(0, Math.round((rx - previous.rx) / seconds)),
-            txPerSecond: Math.max(0, Math.round((tx - previous.tx) / seconds)),
-            available: true
-        };
+        if (parsed) return { rx, tx, source: 'proc-net-dev' };
     } catch {
-        return { rx: 0, tx: 0, rxPerSecond: 0, txPerSecond: 0, available: false };
+        // ignore
     }
+
+    // 2) /sys/class/net/<iface>/statistics/{rx,tx}_bytes (Android-friendly)
+    try {
+        const interfaces = await fs.readdir('/sys/class/net');
+        let rx = 0;
+        let tx = 0;
+        let parsed = false;
+        for (const iface of interfaces) {
+            if (iface === 'lo') continue;
+            try {
+                const rxRaw = await fs.readFile(`/sys/class/net/${iface}/statistics/rx_bytes`, 'utf8');
+                const txRaw = await fs.readFile(`/sys/class/net/${iface}/statistics/tx_bytes`, 'utf8');
+                const r = Number(String(rxRaw).trim());
+                const t = Number(String(txRaw).trim());
+                if (!Number.isFinite(r) || !Number.isFinite(t)) continue;
+                rx += r;
+                tx += t;
+                parsed = true;
+            } catch {
+                // skip iface
+            }
+        }
+        if (parsed) return { rx, tx, source: 'sysfs' };
+    } catch {
+        // ignore
+    }
+
+    // 3) /proc/net/xt_qtaguid/iface_stat_fmt (older Android)
+    try {
+        const raw = await fs.readFile('/proc/net/xt_qtaguid/iface_stat_fmt', 'utf8');
+        const lines = raw.split(/\r?\n/).slice(1);
+        let rx = 0;
+        let tx = 0;
+        let parsed = false;
+        for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length < 5) continue;
+            if (parts[0] === 'lo') continue;
+            const r = Number(parts[1]);
+            const t = Number(parts[3]);
+            if (!Number.isFinite(r) || !Number.isFinite(t)) continue;
+            rx += r;
+            tx += t;
+            parsed = true;
+        }
+        if (parsed) return { rx, tx, source: 'qtaguid' };
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+async function getNetworkSample() {
+    const counters = await readNetworkCounters();
+    if (!counters) {
+        return { rx: 0, tx: 0, rxPerSecond: 0, txPerSecond: 0, available: false, source: 'none' };
+    }
+
+    const now = Date.now();
+    const previous = lastNetworkSample;
+    lastNetworkSample = { rx: counters.rx, tx: counters.tx, at: now };
+
+    if (!previous) {
+        return { rx: counters.rx, tx: counters.tx, rxPerSecond: 0, txPerSecond: 0, available: true, source: counters.source };
+    }
+
+    const seconds = Math.max(1, (now - previous.at) / 1000);
+    const rxDelta = counters.rx - previous.rx;
+    const txDelta = counters.tx - previous.tx;
+    return {
+        rx: counters.rx,
+        tx: counters.tx,
+        rxPerSecond: Math.max(0, Math.round(rxDelta / seconds)),
+        txPerSecond: Math.max(0, Math.round(txDelta / seconds)),
+        available: true,
+        source: counters.source
+    };
 }
 
 function detectCpuCount() {
@@ -1220,6 +1294,138 @@ function getCompressionSnapshot() {
     };
 }
 
+function getRestoreSnapshot() {
+    return {
+        current: restoreState.current ? { ...restoreState.current } : null,
+        queue: restoreState.queue.map(item => ({ ...item })),
+        history: restoreState.history.slice(0, 20).map(item => ({ ...item }))
+    };
+}
+
+async function performRestore(record) {
+    const videoSnapshot = record.videoSnapshot;
+    if (!videoSnapshot || !videoSnapshot.id) return { status: 'skipped', reason: 'no_snapshot' };
+    if (!record.telegram || !record.telegram.messageId) return { status: 'skipped', reason: 'no_telegram' };
+
+    const filePath = getVideoFilePath(videoSnapshot);
+
+    restoreState.current = {
+        id: videoSnapshot.id,
+        title: videoSnapshot.title || videoSnapshot.id,
+        startedAt: Date.now(),
+        receivedBytes: 0,
+        totalBytes: 0,
+        progress: 0
+    };
+    await updateBackupRecord(videoSnapshot.id, {
+        status: 'restoring',
+        restoreStartedAt: new Date().toISOString()
+    }).catch(() => {});
+
+    try {
+        await telegramBackup.restoreVideoBackup({
+            backup: record.telegram,
+            outputPath: filePath,
+            onProgress: (received, total) => {
+                if (!restoreState.current || restoreState.current.id !== videoSnapshot.id) return;
+                restoreState.current.receivedBytes = received;
+                if (total > 0) {
+                    restoreState.current.totalBytes = total;
+                    restoreState.current.progress = Math.min(99, Math.round((received / total) * 100));
+                }
+            }
+        });
+    } catch (error) {
+        restoreState.history.unshift({
+            id: videoSnapshot.id,
+            title: videoSnapshot.title || videoSnapshot.id,
+            status: 'failed',
+            error: error.message || 'Restore Telegram gagal.',
+            finishedAt: Date.now()
+        });
+        restoreState.history = restoreState.history.slice(0, 30);
+        restoreState.current = null;
+        await updateBackupRecord(videoSnapshot.id, {
+            status: 'restore_failed',
+            error: error.message || 'Restore Telegram gagal.'
+        }).catch(() => {});
+        throw error;
+    }
+
+    const folders = await readFolders();
+    if (record.folderSnapshot && !folders.some(folder => folder.id === record.folderSnapshot.id)) {
+        folders.unshift(record.folderSnapshot);
+        await saveFolders(folders);
+    }
+
+    const videos = await readVideos();
+    const existingIndex = videos.findIndex(video => video.id === videoSnapshot.id);
+    if (existingIndex >= 0) {
+        videos[existingIndex] = { ...videos[existingIndex], ...videoSnapshot };
+    } else {
+        videos.unshift(videoSnapshot);
+    }
+    await saveVideos(videos);
+    await updateBackupRecord(videoSnapshot.id, {
+        status: 'restored',
+        restoredAt: new Date().toISOString()
+    }).catch(() => {});
+
+    let finalSize = 0;
+    try {
+        const stat = await fs.stat(filePath);
+        finalSize = stat.size;
+    } catch {
+        // ignore
+    }
+
+    restoreState.history.unshift({
+        id: videoSnapshot.id,
+        title: videoSnapshot.title || videoSnapshot.id,
+        status: 'done',
+        size: finalSize,
+        finishedAt: Date.now()
+    });
+    restoreState.history = restoreState.history.slice(0, 30);
+    restoreState.current = null;
+
+    return { status: 'done', filePath };
+}
+
+function enqueueRestore(record) {
+    if (!record || !record.videoSnapshot || !record.videoSnapshot.id) {
+        return Promise.resolve({ status: 'skipped', reason: 'no_video' });
+    }
+    const id = record.videoSnapshot.id;
+    if (videoRestorePending.has(id)) {
+        return Promise.resolve({ status: 'already_queued' });
+    }
+
+    videoRestorePending.add(id);
+    restoreState.queue.push({
+        id,
+        title: record.videoSnapshot.title || id,
+        queuedAt: Date.now()
+    });
+
+    const queued = videoRestoreQueue.then(async () => {
+        restoreState.queue = restoreState.queue.filter(item => item.id !== id);
+        return performRestore(record);
+    });
+
+    videoRestoreQueue = queued.catch(error => {
+        console.error('[restore]', id, error.message || error);
+    }).finally(() => {
+        videoRestorePending.delete(id);
+        restoreState.queue = restoreState.queue.filter(item => item.id !== id);
+        if (restoreState.current && restoreState.current.id === id) {
+            restoreState.current = null;
+        }
+    });
+
+    return queued;
+}
+
 function enqueueVideoCompression(video, { force = false } = {}) {
     if (!video || !video.id) return Promise.resolve(null);
     if (videoCompressionPending.has(video.id)) {
@@ -1774,6 +1980,11 @@ async function handleApi(req, res, url) {
 
         if (req.method === 'GET' && url.pathname === '/api/admin/compression-queue') {
             sendJson(res, 200, { compression: getCompressionSnapshot() });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/admin/restore-queue') {
+            sendJson(res, 200, { restore: getRestoreSnapshot() });
             return;
         }
 
@@ -2403,36 +2614,8 @@ async function handleApi(req, res, url) {
                 sendError(res, 404, 'Backup video tidak ditemukan.');
                 return;
             }
-
-            const videoSnapshot = record.videoSnapshot;
-            const filePath = getVideoFilePath(videoSnapshot);
-            await telegramBackup.restoreVideoBackup({
-                backup: record.telegram,
-                outputPath: filePath
-            });
-
-            const folders = await readFolders();
-            if (record.folderSnapshot && !folders.some(folder => folder.id === record.folderSnapshot.id)) {
-                folders.unshift(record.folderSnapshot);
-                await saveFolders(folders);
-            }
-
-            const videos = await readVideos();
-            const existingIndex = videos.findIndex(video => video.id === videoSnapshot.id);
-            if (existingIndex >= 0) {
-                videos[existingIndex] = {
-                    ...videos[existingIndex],
-                    ...videoSnapshot
-                };
-            } else {
-                videos.unshift(videoSnapshot);
-            }
-            await saveVideos(videos);
-            await updateBackupRecord(videoSnapshot.id, {
-                status: 'restored',
-                restoredAt: new Date().toISOString()
-            });
-            sendJson(res, 200, { ok: true, video: sanitizeVideo(videoSnapshot) });
+            enqueueRestore(record).catch(() => {});
+            sendJson(res, 200, { ok: true, message: 'Restore dijadwalkan.', video: sanitizeVideo(record.videoSnapshot) });
             return;
         }
 
@@ -2440,53 +2623,13 @@ async function handleApi(req, res, url) {
             const backups = await readTelegramBackups();
             const records = Object.values(backups.videos || {})
                 .filter(record => record && record.telegram && record.videoSnapshot);
-            const restored = [];
-            const failed = [];
-
+            let queued = 0;
             for (const record of records) {
-                const videoSnapshot = record.videoSnapshot;
-                try {
-                    const filePath = getVideoFilePath(videoSnapshot);
-                    await telegramBackup.restoreVideoBackup({
-                        backup: record.telegram,
-                        outputPath: filePath
-                    });
-
-                    const folders = await readFolders();
-                    if (record.folderSnapshot && !folders.some(folder => folder.id === record.folderSnapshot.id)) {
-                        folders.unshift(record.folderSnapshot);
-                        await saveFolders(folders);
-                    }
-
-                    const videos = await readVideos();
-                    const existingIndex = videos.findIndex(video => video.id === videoSnapshot.id);
-                    if (existingIndex >= 0) {
-                        videos[existingIndex] = {
-                            ...videos[existingIndex],
-                            ...videoSnapshot
-                        };
-                    } else {
-                        videos.unshift(videoSnapshot);
-                    }
-                    await saveVideos(videos);
-                    await updateBackupRecord(videoSnapshot.id, {
-                        status: 'restored',
-                        restoredAt: new Date().toISOString()
-                    });
-                    restored.push(videoSnapshot.id);
-                } catch (error) {
-                    failed.push({
-                        id: videoSnapshot.id,
-                        error: error.message || 'Restore Telegram gagal.'
-                    });
-                    await updateBackupRecord(videoSnapshot.id, {
-                        status: 'restore_failed',
-                        error: error.message || 'Restore Telegram gagal.'
-                    });
-                }
+                if (videoRestorePending.has(record.videoSnapshot.id)) continue;
+                enqueueRestore(record).catch(() => {});
+                queued += 1;
             }
-
-            sendJson(res, 200, { ok: failed.length === 0, restored, failed });
+            sendJson(res, 200, { ok: true, queued, message: `${queued} video dijadwalkan restore.` });
             return;
         }
 

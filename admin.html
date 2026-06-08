@@ -179,6 +179,40 @@
             </div>
         </section>
 
+        <section id="restoreSection" class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg overflow-hidden">
+            <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between mb-4 sm:mb-6">
+                <div>
+                    <p class="text-xs sm:text-sm text-purple-400 font-medium">Antrian Restore Video</p>
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">Restore Manager</h2>
+                    <p id="restoreMeta" class="text-xs sm:text-sm text-neutral-500 mt-1">Memuat status restore...</p>
+                </div>
+            </div>
+            <div id="restoreBody" class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-1">Sedang direstore</p>
+                    <p id="restoreCurrentTitle" class="text-sm font-medium text-white truncate">-</p>
+                    <p id="restoreCurrentDetail" class="text-[11px] text-neutral-500 mt-1 truncate">Tidak ada job aktif</p>
+                    <div class="h-2 bg-neutral-800 rounded-full mt-3 overflow-hidden">
+                        <div id="restoreCurrentBar" class="h-full bg-purple-500 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <div class="flex justify-between text-[11px] text-neutral-500 mt-1">
+                        <span id="restoreCurrentSize">0 / 0</span>
+                        <span id="restoreCurrentPercent">0%</span>
+                    </div>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-2">Antrian (<span id="restoreQueueCount">0</span>)</p>
+                    <div id="restoreQueueList" class="space-y-1.5 max-h-48 overflow-auto"></div>
+                    <p id="restoreQueueEmpty" class="hidden text-xs text-neutral-600">Antrian kosong.</p>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-2">Riwayat terbaru</p>
+                    <div id="restoreHistoryList" class="space-y-1.5 max-h-48 overflow-auto"></div>
+                    <p id="restoreHistoryEmpty" class="hidden text-xs text-neutral-600">Belum ada riwayat.</p>
+                </div>
+            </div>
+        </section>
+
         <section id="adminWorkspace" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
             <div id="leftPanel" class="xl:col-span-1 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-lg h-fit">
                 <section id="linkBankSection" class="mb-8 border-b border-neutral-800 pb-6">
@@ -510,6 +544,18 @@
             const compressionHistoryEmpty = document.getElementById('compressionHistoryEmpty');
             const compressAllBtn = document.getElementById('compressAllBtn');
             const compressForceAllBtn = document.getElementById('compressForceAllBtn');
+            const restoreSection = document.getElementById('restoreSection');
+            const restoreMeta = document.getElementById('restoreMeta');
+            const restoreCurrentTitle = document.getElementById('restoreCurrentTitle');
+            const restoreCurrentDetail = document.getElementById('restoreCurrentDetail');
+            const restoreCurrentBar = document.getElementById('restoreCurrentBar');
+            const restoreCurrentSize = document.getElementById('restoreCurrentSize');
+            const restoreCurrentPercent = document.getElementById('restoreCurrentPercent');
+            const restoreQueueCount = document.getElementById('restoreQueueCount');
+            const restoreQueueList = document.getElementById('restoreQueueList');
+            const restoreQueueEmpty = document.getElementById('restoreQueueEmpty');
+            const restoreHistoryList = document.getElementById('restoreHistoryList');
+            const restoreHistoryEmpty = document.getElementById('restoreHistoryEmpty');
             const adminWorkspace = document.getElementById('adminWorkspace');
             const leftPanel = document.getElementById('leftPanel');
             const rightPanel = document.getElementById('rightPanel');
@@ -639,6 +685,7 @@
             let serverStatus = null;
             let telegramBackupState = null;
             let compressionState = null;
+            let restoreState = null;
             let telegramBotState = null;
             let resizeTimer = null;
             const currentAdminPage = window.location.pathname.startsWith('/admin/images')
@@ -718,6 +765,7 @@
                 serverSection.classList.toggle('hidden', !isVideoPage);
                 backupSection.classList.toggle('hidden', !isVideoPage);
                 compressionSection.classList.toggle('hidden', !isVideoPage);
+                restoreSection.classList.toggle('hidden', !isVideoPage);
                 rightPanel.classList.toggle('hidden', isLinkPage);
                 adminWorkspace.className = isUtilityPage && isLinkPage
                     ? 'grid grid-cols-1 gap-8'
@@ -974,6 +1022,75 @@
                         <span class="text-[10px] shrink-0 text-right max-w-[55%] truncate" title="${escapeHtml(detail)}">${escapeHtml(detail)}</span>
                     `;
                     compressionHistoryList.appendChild(row);
+                });
+            }
+
+            function renderRestore() {
+                if (!restoreState) {
+                    restoreMeta.innerText = 'Memuat status restore...';
+                    return;
+                }
+
+                const queue = restoreState.queue || [];
+                const current = restoreState.current;
+                const queueCount = queue.length;
+                if (current) {
+                    restoreMeta.innerText = `Aktif: ${current.title || current.id}${queueCount ? ` - ${queueCount} antri` : ''}`;
+                } else if (queueCount) {
+                    restoreMeta.innerText = `${queueCount} job menunggu`;
+                } else {
+                    restoreMeta.innerText = 'Tidak ada job aktif';
+                }
+
+                if (current) {
+                    restoreCurrentTitle.innerText = current.title || current.id;
+                    const total = current.totalBytes || 0;
+                    const percent = Number(current.progress || 0);
+                    restoreCurrentBar.style.width = `${percent}%`;
+                    restoreCurrentSize.innerText = `${formatBytes(current.receivedBytes || 0)} / ${total ? formatBytes(total) : '?'}`;
+                    restoreCurrentPercent.innerText = `${percent}%`;
+                    const elapsed = current.startedAt ? Math.floor((Date.now() - current.startedAt) / 1000) : 0;
+                    restoreCurrentDetail.innerText = `berjalan ${formatSecondsHuman(elapsed)}`;
+                } else {
+                    restoreCurrentTitle.innerText = '-';
+                    restoreCurrentDetail.innerText = 'Tidak ada job aktif';
+                    restoreCurrentBar.style.width = '0%';
+                    restoreCurrentSize.innerText = '0 / 0';
+                    restoreCurrentPercent.innerText = '0%';
+                }
+
+                restoreQueueCount.innerText = queueCount;
+                restoreQueueList.innerHTML = '';
+                restoreQueueEmpty.classList.toggle('hidden', queueCount > 0);
+                queue.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-2 text-xs text-neutral-300 bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5';
+                    row.innerHTML = `<span class="truncate flex-1">${escapeHtml(item.title || item.id)}</span>`;
+                    restoreQueueList.appendChild(row);
+                });
+
+                const history = restoreState.history || [];
+                restoreHistoryList.innerHTML = '';
+                restoreHistoryEmpty.classList.toggle('hidden', history.length > 0);
+                history.forEach(item => {
+                    const row = document.createElement('div');
+                    const colorClass = item.status === 'done'
+                        ? 'border-purple-500/30 text-purple-200'
+                        : (item.status === 'failed'
+                            ? 'border-red-500/30 text-red-300'
+                            : 'border-neutral-700 text-neutral-300');
+                    row.className = `flex items-start justify-between gap-2 text-xs bg-neutral-900 border ${colorClass} rounded-lg px-2.5 py-1.5`;
+                    let detail = item.status;
+                    if (item.status === 'done' && item.size) {
+                        detail = formatBytes(item.size);
+                    } else if (item.status === 'failed' && item.error) {
+                        detail = item.error;
+                    }
+                    row.innerHTML = `
+                        <span class="truncate flex-1">${escapeHtml(item.title || item.id)}</span>
+                        <span class="text-[10px] shrink-0 text-right max-w-[55%] truncate" title="${escapeHtml(detail)}">${escapeHtml(detail)}</span>
+                    `;
+                    restoreHistoryList.appendChild(row);
                 });
             }
 
@@ -1350,6 +1467,7 @@
                 renderServerStatus();
                 renderTelegramBackup();
                 renderCompression();
+                renderRestore();
                 renderLinkBank();
                 renderImages();
                 renderTelegramBotConfig();
@@ -1362,7 +1480,7 @@
             }
 
             async function loadData() {
-                const [videosData, foldersData, imagesData, linkBankData, visitorData, serverData, backupData, botData, compressionData] = await Promise.all([
+                const [videosData, foldersData, imagesData, linkBankData, visitorData, serverData, backupData, botData, compressionData, restoreData] = await Promise.all([
                     api('/api/admin/videos'),
                     api('/api/admin/folders'),
                     api('/api/admin/images'),
@@ -1371,7 +1489,8 @@
                     api('/api/admin/server-status'),
                     api('/api/admin/telegram-backups'),
                     api('/api/admin/telegram-bot'),
-                    api('/api/admin/compression-queue').catch(() => ({ compression: null }))
+                    api('/api/admin/compression-queue').catch(() => ({ compression: null })),
+                    api('/api/admin/restore-queue').catch(() => ({ restore: null }))
                 ]);
                 videoList = videosData.videos || [];
                 folderItems = foldersData.folders || [];
@@ -1382,20 +1501,26 @@
                 telegramBackupState = backupData || null;
                 telegramBotState = botData || null;
                 compressionState = (compressionData && compressionData.compression) || null;
+                restoreState = (restoreData && restoreData.restore) || null;
                 renderAll();
             }
 
             async function refreshServerStatus() {
                 if (!token) return;
                 try {
-                    const [statusData, compressionData] = await Promise.all([
+                    const [statusData, compressionData, restoreData] = await Promise.all([
                         api('/api/admin/server-status'),
-                        api('/api/admin/compression-queue').catch(() => ({ compression: null }))
+                        api('/api/admin/compression-queue').catch(() => ({ compression: null })),
+                        api('/api/admin/restore-queue').catch(() => ({ restore: null }))
                     ]);
                     serverStatus = statusData.status || null;
                     if (compressionData && compressionData.compression) {
                         compressionState = compressionData.compression;
                         renderCompression();
+                    }
+                    if (restoreData && restoreData.restore) {
+                        restoreState = restoreData.restore;
+                        renderRestore();
                     }
                     renderServerStatus();
                 } catch {

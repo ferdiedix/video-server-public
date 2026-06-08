@@ -150,7 +150,7 @@ async function uploadVideoBackup({ video, folder, filePath, existingTopic }) {
     };
 }
 
-async function restoreVideoBackup({ backup, outputPath }) {
+async function restoreVideoBackup({ backup, outputPath, onProgress }) {
     const { client, config } = await getClient();
     const chat = await client.getEntity(config.backupChat || backup.telegramChat);
     const messages = await client.getMessages(chat, { ids: [backup.messageId] });
@@ -160,7 +160,21 @@ async function restoreVideoBackup({ backup, outputPath }) {
     }
 
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await client.downloadMedia(message, { outputFile: outputPath });
+
+    const downloadOptions = { outputFile: outputPath };
+    if (typeof onProgress === 'function') {
+        downloadOptions.progressCallback = (received, total) => {
+            try {
+                const got = Number(received && received.toJSNumber ? received.toJSNumber() : received) || 0;
+                const totalNum = Number(total && total.toJSNumber ? total.toJSNumber() : total) || 0;
+                onProgress(got, totalNum);
+            } catch {
+                // ignore progress callback errors
+            }
+        };
+    }
+
+    await client.downloadMedia(message, downloadOptions);
     await client.disconnect();
 
     return {

@@ -31,7 +31,8 @@ function getConfig() {
         apiId: Number(process.env.TELEGRAM_API_ID || 0),
         apiHash: process.env.TELEGRAM_API_HASH || '',
         session: process.env.TELEGRAM_SESSION || '',
-        backupChat: process.env.TELEGRAM_BACKUP_CHAT || ''
+        backupChat: process.env.TELEGRAM_BACKUP_CHAT || '',
+        useForumTopics: process.env.TELEGRAM_USE_FORUM_TOPICS === 'true'
     };
 }
 
@@ -65,24 +66,62 @@ function parseBackupCaption(caption) {
     }
 }
 
-async function iterateBackupMessages(client, chat) {
-    const messages = [];
-    let offsetId = 0;
-    const limit = 100;
-    while (true) {
-        const batch = await client.getMessages(chat, { limit, offsetId });
-        if (!batch || !batch.length) break;
-        for (const message of batch) {
-            const caption = (message.message || message.text || '').toString();
-            const payload = parseBackupCaption(caption);
-            if (payload) {
-                messages.push({ message, payload });
-            }
-            offsetId = message.id;
-        }
-        if (batch.length < limit) break;
+async function listForumTopics(client, chat) {
+    try {
+        const result = await client.invoke(new Api.channels.GetForumTopics({
+            channel: chat,
+            limit: 100,
+            offsetDate: 0,
+            offsetId: 0,
+            offsetTopic: 0
+        }));
+        const topics = (result.topics || []).filter(topic => topic && topic.id);
+        return topics;
+    } catch (error) {
+        return null;
     }
-    return messages;
+}
+
+async function scanMessages(client, chat, { logger, replyTo = null, label = 'chat' } = {}) {
+    const records = [];
+    let processed = 0;
+    let nonBackup = 0;
+    let invalidJson = 0;
+
+    const iterOptions = { limit: undefined };
+    if (replyTo) iterOptions.replyTo = replyTo;
+
+    try {
+        for await (const message of client.iterMessages(chat, iterOptions)) {
+            processed += 1;
+            if (processed % 200 === 0) {
+                logger(`[${label}] sudah memindai ${processed} pesan, ${records.length} backup ditemukan...`);
+            }
+            const caption = (message.message || message.text || '').toString();
+            if (!caption) continue;
+            if (!caption.trim().startsWith('WEBAPP_BACKUP')) {
+                nonBackup += 1;
+                continue;
+            }
+            const payload = parseBackupCaption(caption);
+            if (!payload) {
+                invalidJson += 1;
+                continue;
+            }
+            records.push({
+                messageId: message.id,
+                payload,
+                replyToTopMsgId: message.replyTo && message.replyTo.replyToTopId
+                    ? message.replyTo.replyToTopId
+                    : (message.replyTo && message.replyTo.replyToMsgId ? message.replyTo.replyToMsgId : null)
+            });
+        }
+    } catch (error) {
+        logger(`[${label}] error saat memindai: ${error.message || error}`);
+    }
+
+    logger(`[${label}] selesai. Total pesan: ${processed}, backup valid: ${records.length}, non-backup: ${nonBackup}, gagal parse JSON: ${invalidJson}.`);
+    return records;
 }
 
 function chooseLatestPerVideo(records) {
@@ -91,14 +130,14 @@ function chooseLatestPerVideo(records) {
         const video = item.payload.video;
         if (!video || !video.id) continue;
         const existing = map.get(video.id);
-        if (!existing || existing.message.id < item.message.id) {
+        if (!existing || existing.messageId < item.messageId) {
             map.set(video.id, item);
         }
     }
     return [...map.values()];
 }
 
-async function rescan({ logger = console.log } = {}) {
+async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
     if (!loadGramJs()) {
         throw new Error('GramJS belum terpasang.');
     }
@@ -123,23 +162,34 @@ async function rescan({ logger = console.log } = {}) {
         throw new Error(`Gagal mengambil entity chat ${config.backupChat}: ${error.message || error}`);
     }
 
-    logger(`Memindai pesan di ${config.backupChat}...`);
-    let scanned;
-    try {
-        scanned = await iterateBackupMessages(client, chat);
-    } catch (error) {
-        await client.disconnect();
-        throw new Error(`Gagal memindai pesan Telegram: ${error.message || error}`);
+    let allRecords = [];
+    const topics = await listForumTopics(client, chat);
+
+    if (topics && topics.length) {
+        logger(`Forum topics terdeteksi: ${topics.length} topic. Memindai per topic plus general...`);
+        for (const topic of topics) {
+            const records = await scanMessages(client, chat, {
+                logger,
+                replyTo: topic.id,
+                label: `topic ${topic.id} - ${topic.title || ''}`
+            });
+            allRecords = allRecords.concat(records);
+        }
+        const generalRecords = await scanMessages(client, chat, { logger, label: 'general' });
+        allRecords = allRecords.concat(generalRecords);
+    } else {
+        logger('Bukan forum atau tidak ada topic. Memindai seluruh pesan chat...');
+        allRecords = await scanMessages(client, chat, { logger, label: 'chat' });
     }
 
     await client.disconnect();
 
-    const filtered = chooseLatestPerVideo(scanned);
-    logger(`Ditemukan ${filtered.length} video backup unik (dari ${scanned.length} pesan WEBAPP_BACKUP).`);
+    const filtered = chooseLatestPerVideo(allRecords);
+    logger(`Total backup yang valid: ${allRecords.length}. Setelah dedup per video: ${filtered.length}.`);
 
     if (!filtered.length) {
         return {
-            scannedMessages: scanned.length,
+            scannedMessages: allRecords.length,
             videoCount: 0,
             folderCount: 0,
             videos: [],
@@ -159,7 +209,7 @@ async function rescan({ logger = console.log } = {}) {
 
     for (const item of filtered) {
         const payload = item.payload;
-        const messageId = item.message.id;
+        const messageId = item.messageId;
         const videoSnapshot = payload.video;
         const folderSnapshot = payload.folder || null;
 
@@ -173,6 +223,9 @@ async function rescan({ logger = console.log } = {}) {
                 ...(backupFolders[folderSnapshot.id] || {}),
                 folderSnapshot,
                 status: 'backed_up',
+                topic: item.replyToTopMsgId
+                    ? { topMessageId: item.replyToTopMsgId }
+                    : (backupFolders[folderSnapshot.id] && backupFolders[folderSnapshot.id].topic) || null,
                 updatedAt: new Date().toISOString()
             };
         }
@@ -199,6 +252,7 @@ async function rescan({ logger = console.log } = {}) {
         }
         videoById.set(videoSnapshot.id, merged);
 
+        const previousTelegram = (backupVideos[videoSnapshot.id] || {}).telegram || {};
         backupVideos[videoSnapshot.id] = {
             ...(backupVideos[videoSnapshot.id] || {}),
             status: 'backed_up',
@@ -208,13 +262,11 @@ async function rescan({ logger = console.log } = {}) {
                 telegramChat: String(getConfig().backupChat),
                 messageId,
                 fileName: merged.fileName || merged.storedFileName,
-                fileSize: null,
-                backedUpAt: backupVideos[videoSnapshot.id] && backupVideos[videoSnapshot.id].telegram
-                    ? backupVideos[videoSnapshot.id].telegram.backedUpAt
-                    : new Date().toISOString(),
-                topic: backupVideos[videoSnapshot.id] && backupVideos[videoSnapshot.id].telegram
-                    ? backupVideos[videoSnapshot.id].telegram.topic || null
-                    : null
+                fileSize: previousTelegram.fileSize || null,
+                backedUpAt: previousTelegram.backedUpAt || new Date().toISOString(),
+                topic: item.replyToTopMsgId
+                    ? { topMessageId: item.replyToTopMsgId }
+                    : previousTelegram.topic || null
             },
             updatedAt: new Date().toISOString()
         };
@@ -232,7 +284,7 @@ async function rescan({ logger = console.log } = {}) {
     await writeJson(TELEGRAM_BACKUPS_FILE, { folders: backupFolders, videos: backupVideos });
 
     return {
-        scannedMessages: scanned.length,
+        scannedMessages: allRecords.length,
         videoCount: filtered.length,
         folderCount: folders.length,
         videos,

@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const childProcess = require('child_process');
+const { Transform } = require('stream');
 const telegramBackup = require('./telegram-backup');
 const telegramRescan = require('./telegram-rescan');
 
@@ -38,8 +39,9 @@ const COMPRESS_AUDIO_BITRATE = String(process.env.COMPRESS_AUDIO_BITRATE || '128
 const COMPRESS_MIN_SAVING_RATIO = Math.max(0, Math.min(0.95, Number(process.env.COMPRESS_MIN_SAVING || 0.15)));
 const COMPRESS_CPU_PERCENT = Math.max(10, Math.min(100, Number(process.env.COMPRESS_CPU_PERCENT || DEFAULT_COMPRESS_CPU)));
 const COMPRESS_NICENESS = Math.max(0, Math.min(19, Number(process.env.COMPRESS_NICENESS || 10)));
-const BANDWIDTH_PER_USER_KBPS = Math.max(0, Number(process.env.BANDWIDTH_PER_USER_KBPS || 500));
+const BANDWIDTH_PER_USER_KBPS = Math.max(0, Number(process.env.BANDWIDTH_PER_USER_KBPS || 1500));
 const BANDWIDTH_PER_USER_BPS = BANDWIDTH_PER_USER_KBPS * 1024;
+const BANDWIDTH_BURST_MULTIPLIER = Math.max(1, Number(process.env.BANDWIDTH_BURST_MULTIPLIER || 8));
 
 const sessions = new Map();
 const uploadSessions = new Map();
@@ -3405,11 +3407,11 @@ const bandwidthBuckets = new Map();
 function getBandwidthBucket(ip) {
     const now = Date.now();
     let bucket = bandwidthBuckets.get(ip);
+    const burst = BANDWIDTH_PER_USER_BPS * BANDWIDTH_BURST_MULTIPLIER;
     if (!bucket) {
         bucket = {
-            tokens: BANDWIDTH_PER_USER_BPS,
-            updatedAt: now,
-            queuedAt: now
+            tokens: burst,
+            updatedAt: now
         };
         bandwidthBuckets.set(ip, bucket);
     }
@@ -3421,26 +3423,10 @@ function refillBucket(bucket) {
     const now = Date.now();
     const elapsed = (now - bucket.updatedAt) / 1000;
     if (elapsed > 0) {
-        bucket.tokens = Math.min(
-            BANDWIDTH_PER_USER_BPS * 1.5,
-            bucket.tokens + elapsed * BANDWIDTH_PER_USER_BPS
-        );
+        const burst = BANDWIDTH_PER_USER_BPS * BANDWIDTH_BURST_MULTIPLIER;
+        bucket.tokens = Math.min(burst, bucket.tokens + elapsed * BANDWIDTH_PER_USER_BPS);
         bucket.updatedAt = now;
     }
-}
-
-function consumeBandwidth(ip, bytes) {
-    if (BANDWIDTH_PER_USER_BPS <= 0 || !ip || bytes <= 0) return Promise.resolve();
-    const bucket = getBandwidthBucket(ip);
-    refillBucket(bucket);
-    if (bucket.tokens >= bytes) {
-        bucket.tokens -= bytes;
-        return Promise.resolve();
-    }
-    const deficit = bytes - bucket.tokens;
-    const waitMs = Math.ceil((deficit / BANDWIDTH_PER_USER_BPS) * 1000);
-    bucket.tokens = 0;
-    return new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 5000)));
 }
 
 setInterval(() => {
@@ -3451,68 +3437,51 @@ setInterval(() => {
     }
 }, 30 * 1000).unref?.();
 
+class ThrottleStream extends Transform {
+    constructor(ip) {
+        super({ highWaterMark: 1024 * 1024 });
+        this.ip = ip;
+    }
+
+    _transform(chunk, _encoding, callback) {
+        if (BANDWIDTH_PER_USER_BPS <= 0 || !this.ip) {
+            callback(null, chunk);
+            return;
+        }
+
+        const bucket = getBandwidthBucket(this.ip);
+        refillBucket(bucket);
+
+        if (bucket.tokens >= chunk.length) {
+            bucket.tokens -= chunk.length;
+            callback(null, chunk);
+            return;
+        }
+
+        const deficit = chunk.length - bucket.tokens;
+        bucket.tokens = 0;
+        const waitMs = Math.max(20, Math.min(2000, Math.ceil((deficit / BANDWIDTH_PER_USER_BPS) * 1000)));
+        setTimeout(() => callback(null, chunk), waitMs);
+    }
+}
+
 function pipeWithThrottle(readable, res, ip) {
     if (BANDWIDTH_PER_USER_BPS <= 0) {
         readable.pipe(res);
         return;
     }
-
-    const chunkSize = Math.max(8 * 1024, Math.min(256 * 1024, Math.floor(BANDWIDTH_PER_USER_BPS / 4)));
-    let buffer = Buffer.alloc(0);
-    let ended = false;
-    let writing = false;
-
-    function pumpFromBuffer() {
-        if (writing) return;
-        writing = true;
-
-        (async () => {
-            while (buffer.length > 0) {
-                const slice = buffer.slice(0, chunkSize);
-                buffer = buffer.slice(slice.length);
-                await consumeBandwidth(ip, slice.length);
-                const ok = res.write(slice);
-                if (!ok) {
-                    await new Promise(resolve => res.once('drain', resolve));
-                }
-            }
-            writing = false;
-            if (ended) {
-                res.end();
-            } else {
-                readable.resume();
-            }
-        })().catch(error => {
-            writing = false;
-            if (!res.writableEnded) {
-                try { res.destroy(error); } catch {}
-            }
-        });
-    }
-
-    readable.on('data', chunk => {
-        if (!chunk || !chunk.length) return;
-        buffer = buffer.length ? Buffer.concat([buffer, chunk]) : chunk;
-        if (buffer.length >= chunkSize * 4) {
-            readable.pause();
-        }
-        pumpFromBuffer();
-    });
-
-    readable.on('end', () => {
-        ended = true;
-        pumpFromBuffer();
-    });
-
+    const throttle = new ThrottleStream(ip);
     readable.on('error', error => {
+        throttle.destroy(error);
         if (!res.writableEnded) {
             try { res.destroy(error); } catch {}
         }
     });
-
     res.on('close', () => {
         try { readable.destroy(); } catch {}
+        try { throttle.destroy(); } catch {}
     });
+    readable.pipe(throttle).pipe(res);
 }
 
 function getChunkByteLength(chunk) {

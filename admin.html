@@ -1565,8 +1565,9 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
-                const chunkSize = 6 * 1024 * 1024;
+                const chunkSize = 1.5 * 1024 * 1024;
                 const totalChunks = Math.ceil(file.size / chunkSize);
+                const maxRetries = 4;
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1577,11 +1578,27 @@
                     const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
                     const dataUrl = await readBlobAsDataUrl(chunk);
                     progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
-                    await api(`/api/admin/uploads/${start.uploadId}/chunk`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ chunkIndex, dataUrl })
-                    });
+
+                    let lastError = null;
+                    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+                        try {
+                            await api(`/api/admin/uploads/${start.uploadId}/chunk`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ chunkIndex, dataUrl })
+                            });
+                            lastError = null;
+                            break;
+                        } catch (error) {
+                            lastError = error;
+                            const backoff = 800 * Math.pow(2, attempt);
+                            progressLabel(`Retry ${file.name} chunk ${chunkIndex + 1}/${totalChunks} (${attempt + 1}/${maxRetries})...`);
+                            await new Promise(resolve => setTimeout(resolve, backoff));
+                        }
+                    }
+                    if (lastError) {
+                        throw lastError;
+                    }
                 }
                 return start.uploadId;
             }

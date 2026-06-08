@@ -3350,31 +3350,35 @@ const appNetworkCounter = {
     tx: 0
 };
 
+function getChunkByteLength(chunk) {
+    if (!chunk) return 0;
+    try {
+        if (Buffer.isBuffer(chunk)) return chunk.length;
+        if (chunk instanceof Uint8Array) return chunk.byteLength;
+        if (typeof chunk === 'string') return Buffer.byteLength(chunk);
+    } catch {
+        return 0;
+    }
+    return 0;
+}
+
 function instrumentResponseTraffic(req, res) {
-    const originalWrite = res.write.bind(res);
-    const originalEnd = res.end.bind(res);
+    try {
+        const originalWrite = res.write.bind(res);
+        const originalEnd = res.end.bind(res);
 
-    res.write = function (chunk, ...rest) {
-        if (chunk) {
-            const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-            appNetworkCounter.tx += len;
-        }
-        return originalWrite(chunk, ...rest);
-    };
+        res.write = function (chunk, ...rest) {
+            try { appNetworkCounter.tx += getChunkByteLength(chunk); } catch {}
+            return originalWrite(chunk, ...rest);
+        };
 
-    res.end = function (chunk, ...rest) {
-        if (chunk) {
-            const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-            appNetworkCounter.tx += len;
-        }
-        return originalEnd(chunk, ...rest);
-    };
-
-    req.on('data', chunk => {
-        if (!chunk) return;
-        const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-        appNetworkCounter.rx += len;
-    });
+        res.end = function (chunk, ...rest) {
+            try { appNetworkCounter.tx += getChunkByteLength(chunk); } catch {}
+            return originalEnd(chunk, ...rest);
+        };
+    } catch (error) {
+        console.error('[net-instrument-tx]', error.message || error);
+    }
 }
 
 async function handleRequest(req, res) {

@@ -2069,22 +2069,41 @@ async function handleApi(req, res, url) {
             const sample = await getNetworkSample();
             const probes = {};
             try {
-                await fs.access('/proc/net/dev');
+                const procContent = await fs.readFile('/proc/net/dev', 'utf8');
                 probes.procNetDev = 'accessible';
+                probes.procNetDevContent = procContent.slice(0, 2000);
+                probes.procNetDevLines = procContent.split(/\r?\n/).length;
             } catch (error) {
                 probes.procNetDev = `error: ${error.code || error.message}`;
             }
             try {
                 const list = await fs.readdir('/sys/class/net');
                 probes.sysClassNet = list.join(', ');
+                for (const iface of list.slice(0, 6)) {
+                    try {
+                        const rx = await fs.readFile(`/sys/class/net/${iface}/statistics/rx_bytes`, 'utf8');
+                        const tx = await fs.readFile(`/sys/class/net/${iface}/statistics/tx_bytes`, 'utf8');
+                        probes[`sysfs_${iface}`] = `rx=${rx.trim()} tx=${tx.trim()}`;
+                    } catch (error) {
+                        probes[`sysfs_${iface}`] = `error: ${error.code || error.message}`;
+                    }
+                }
             } catch (error) {
                 probes.sysClassNet = `error: ${error.code || error.message}`;
             }
             try {
                 const ipOut = await execCommand('ip -s -o link');
-                probes.ipLink = ipOut ? `bytes: ${ipOut.length}` : 'empty';
+                probes.ipLink = ipOut ? `len=${ipOut.length}` : 'empty';
+                if (ipOut) probes.ipLinkSample = ipOut.slice(0, 1500);
             } catch (error) {
                 probes.ipLink = `error: ${error.message}`;
+            }
+            try {
+                const ifconfigOut = await execCommand('ifconfig 2>&1');
+                probes.ifconfig = ifconfigOut ? `len=${ifconfigOut.length}` : 'empty';
+                if (ifconfigOut) probes.ifconfigSample = ifconfigOut.slice(0, 1500);
+            } catch (error) {
+                probes.ifconfig = `error: ${error.message}`;
             }
             sendJson(res, 200, { counters, sample, probes });
             return;

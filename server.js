@@ -2510,7 +2510,8 @@ async function handleApi(req, res, url) {
 
             const uploadId = createId();
             const tempPath = path.join(UPLOAD_DIR, `${uploadId}.part`);
-            await fs.writeFile(tempPath, '');
+            const handle = await fs.open(tempPath, 'w');
+            await handle.close();
 
             uploadSessions.set(uploadId, {
                 uploadType,
@@ -2520,10 +2521,82 @@ async function handleApi(req, res, url) {
                 tempPath,
                 receivedBytes: 0,
                 nextChunkIndex: 0,
+                receivedSegments: new Map(),
                 createdAt: Date.now()
             });
 
             sendJson(res, 201, { uploadId });
+            return;
+        }
+
+        const segmentMatch = url.pathname.match(/^\/api\/admin\/uploads\/([^/]+)\/segment$/);
+        if (req.method === 'POST' && segmentMatch) {
+            const upload = uploadSessions.get(segmentMatch[1]);
+            if (!upload) {
+                sendError(res, 404, 'Sesi upload tidak ditemukan.');
+                return;
+            }
+
+            const offset = Number(req.headers['x-offset'] || -1);
+            const length = Number(req.headers['x-length'] || 0);
+            if (!Number.isFinite(offset) || offset < 0 || !Number.isFinite(length) || length <= 0) {
+                sendError(res, 400, 'Header x-offset/x-length tidak valid.');
+                return;
+            }
+            if (offset + length > upload.totalSize) {
+                sendError(res, 400, 'Segment melewati ukuran file.');
+                return;
+            }
+
+            markUploadActive();
+            try {
+                const chunks = [];
+                let received = 0;
+                let aborted = false;
+                await new Promise((resolve, reject) => {
+                    req.on('data', chunk => {
+                        if (aborted) return;
+                        received += chunk.length;
+                        if (received > length + 1024) {
+                            aborted = true;
+                            reject(new Error('Body lebih besar dari yang diumumkan.'));
+                            try { req.destroy(); } catch {}
+                            return;
+                        }
+                        chunks.push(chunk);
+                        try { appNetworkCounter.rx += chunk.length; } catch {}
+                    });
+                    req.on('end', resolve);
+                    req.on('error', reject);
+                });
+
+                const buffer = Buffer.concat(chunks, received);
+                if (buffer.length !== length) {
+                    sendError(res, 400, `Panjang body (${buffer.length}) tidak cocok dengan x-length (${length}).`);
+                    return;
+                }
+
+                const handle = await fs.open(upload.tempPath, 'r+');
+                try {
+                    await handle.write(buffer, 0, buffer.length, offset);
+                } finally {
+                    await handle.close();
+                }
+
+                upload.receivedSegments.set(offset, length);
+                upload.receivedBytes = Math.max(upload.receivedBytes, offset + length);
+
+                sendJson(res, 200, {
+                    receivedBytes: upload.receivedBytes,
+                    accepted: { offset, length }
+                });
+            } catch (error) {
+                if (!res.headersSent) {
+                    sendError(res, 500, error.message || 'Gagal menyimpan segment.');
+                }
+            } finally {
+                markUploadIdle();
+            }
             return;
         }
 

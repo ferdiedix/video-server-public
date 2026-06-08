@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pemutar Video Fokus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-neutral-950 text-neutral-100 font-sans antialiased min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4 md:p-8">
+    <main class="w-full max-w-5xl mx-auto flex flex-col items-center">
+        <h1 id="displayTitle" class="text-base sm:text-2xl md:text-3xl lg:text-4xl font-medium tracking-wide mb-2 sm:mb-4 text-center text-neutral-200 px-2 leading-tight">
+            Memuat...
+        </h1>
+        <p id="videoMeta" class="hidden mb-3 sm:mb-5 text-center">
+            <span id="videoDurationBadge" class="inline-flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 text-neutral-300 text-[11px] sm:text-xs font-medium px-2.5 py-1 rounded-full">
+                <svg class="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                <span id="videoDurationText">0:00</span>
+            </span>
+        </p>
+
+        <div id="emptyState" class="hidden w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 text-center shadow-lg">
+            <p id="emptyTitle" class="text-lg sm:text-xl font-medium text-white">Konten belum tersedia.</p>
+            <p id="emptyMessage" class="text-sm sm:text-base text-neutral-400 mt-2">Silakan kembali lagi nanti.</p>
+        </div>
+
+        <section id="folderShell" class="hidden w-full space-y-3 sm:space-y-5">
+            <div id="folderVideoList" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4"></div>
+        </section>
+
+        <section id="picShell" class="hidden w-full space-y-3 sm:space-y-5">
+            <div id="picLock" class="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 sm:p-8 text-center cursor-pointer hover:bg-neutral-800 transition-colors">
+                <p id="picStatusText" class="text-base sm:text-xl font-medium text-white">Klik untuk membuka galeri foto</p>
+                <p class="text-xs sm:text-sm text-neutral-500 mt-2">Membuka tautan sponsor terlebih dahulu</p>
+            </div>
+            <div id="picImageList" class="hidden grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4"></div>
+        </section>
+
+        <section id="playerArea" class="hidden w-full flex flex-col items-center">
+            <div id="playerShell" class="w-full mx-auto relative rounded-xl sm:rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.7)] border border-neutral-800 ring-1 ring-white/5" style="aspect-ratio: 16 / 9;">
+                <div id="adOverlay" class="absolute inset-0 z-10 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center cursor-pointer hover:bg-black/65 transition-all group p-4">
+                    <div class="bg-neutral-800/80 border border-neutral-600 p-3 sm:p-5 rounded-full group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                        <svg class="w-7 h-7 sm:w-10 sm:h-10 text-neutral-100 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"></path>
+                        </svg>
+                    </div>
+                    <p id="statusText" class="mt-3 sm:mt-5 text-sm sm:text-base text-neutral-200 font-medium tracking-wide text-center">Klik untuk memutar video</p>
+                    <p class="text-[11px] sm:text-xs text-neutral-500 mt-1 sm:mt-2">(Membuka tautan sponsor)</p>
+                    <div id="fallbackAction" class="hidden mt-3 sm:mt-4 flex flex-col items-center gap-2 sm:gap-3"></div>
+                </div>
+
+                <video id="mainVideo" controls controlsList="nodownload" class="w-full h-full object-contain bg-black" preload="metadata" playsinline>
+                    <p class="text-white p-4">Maaf, browser Anda tidak mendukung pemutar video HTML5 ini.</p>
+                </video>
+            </div>
+
+            <div id="videoActions" class="hidden mt-3 sm:mt-5 flex items-center justify-center gap-2 sm:gap-3">
+                <button id="rewindBtn" type="button" class="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-100 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors">
+                    Mundur 10 detik
+                </button>
+                <button id="forwardBtn" type="button" class="bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-100 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors">
+                    Maju 10 detik
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            document.addEventListener('contextmenu', event => event.preventDefault());
+            document.addEventListener('dragstart', event => event.preventDefault());
+            const displayTitle = document.getElementById('displayTitle');
+            const emptyState = document.getElementById('emptyState');
+            const emptyTitle = document.getElementById('emptyTitle');
+            const emptyMessage = document.getElementById('emptyMessage');
+            const folderShell = document.getElementById('folderShell');
+            const folderVideoList = document.getElementById('folderVideoList');
+            const picShell = document.getElementById('picShell');
+            const picLock = document.getElementById('picLock');
+            const picStatusText = document.getElementById('picStatusText');
+            const picImageList = document.getElementById('picImageList');
+            const playerArea = document.getElementById('playerArea');
+            const adOverlay = document.getElementById('adOverlay');
+            const statusText = document.getElementById('statusText');
+            const fallbackAction = document.getElementById('fallbackAction');
+            const mainVideo = document.getElementById('mainVideo');
+            const playerShell = document.getElementById('playerShell');
+            const videoMeta = document.getElementById('videoMeta');
+            const videoDurationText = document.getElementById('videoDurationText');
+            const videoActions = document.getElementById('videoActions');
+            const rewindBtn = document.getElementById('rewindBtn');
+            const forwardBtn = document.getElementById('forwardBtn');
+
+            let currentClickCount = 0;
+            let activeVideo = null;
+            let activePic = null;
+            let picClickCount = 0;
+            let viewCounted = false;
+            let verificationState = null;
+            let sponsorBlockerDetected = false;
+            const VERIFY_DELAY_MS = 7000;
+            const AUTO_CLOSE_SPONSOR_MS = 1200;
+            const MIN_AWAY_MS = 700;
+            const FOLDER_UNLOCK_MS = 30 * 60 * 1000;
+            const FOLDER_UNLOCK_KEY = 'webaff_folder_unlocks';
+
+            function readFolderUnlocks() {
+                try {
+                    const raw = localStorage.getItem(FOLDER_UNLOCK_KEY);
+                    if (!raw) return {};
+                    const parsed = JSON.parse(raw);
+                    return parsed && typeof parsed === 'object' ? parsed : {};
+                } catch {
+                    return {};
+                }
+            }
+
+            function writeFolderUnlocks(map) {
+                try {
+                    localStorage.setItem(FOLDER_UNLOCK_KEY, JSON.stringify(map));
+                } catch {
+                    // Storage may be disabled (private mode); fail soft.
+                }
+            }
+
+            function pruneFolderUnlocks(map) {
+                const now = Date.now();
+                let changed = false;
+                Object.keys(map).forEach(key => {
+                    if (!map[key] || Number(map[key]) <= now) {
+                        delete map[key];
+                        changed = true;
+                    }
+                });
+                return changed;
+            }
+
+            function isFolderUnlocked(folderId) {
+                if (!folderId) return false;
+                const map = readFolderUnlocks();
+                if (pruneFolderUnlocks(map)) writeFolderUnlocks(map);
+                return Number(map[folderId] || 0) > Date.now();
+            }
+
+            function setFolderUnlock(folderId) {
+                if (!folderId) return;
+                const map = readFolderUnlocks();
+                pruneFolderUnlocks(map);
+                map[folderId] = Date.now() + FOLDER_UNLOCK_MS;
+                writeFolderUnlocks(map);
+            }
+
+            function getFolderUnlockRemainingMs(folderId) {
+                if (!folderId) return 0;
+                const map = readFolderUnlocks();
+                const expiresAt = Number(map[folderId] || 0);
+                return Math.max(0, expiresAt - Date.now());
+            }
+
+            function formatUnlockRemaining(ms) {
+                if (ms <= 0) return '';
+                const minutes = Math.floor(ms / 60000);
+                const seconds = Math.floor((ms % 60000) / 1000);
+                if (minutes <= 0) return `${seconds} detik`;
+                return `${minutes} menit`;
+            }
+
+            function formatDurationLabel(seconds) {
+                const total = Math.max(0, Math.round(Number(seconds || 0)));
+                if (!Number.isFinite(total) || total === 0) return '0:00';
+                const hours = Math.floor(total / 3600);
+                const minutes = Math.floor((total % 3600) / 60);
+                const secs = total % 60;
+                if (hours > 0) {
+                    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                }
+                return `${minutes}:${String(secs).padStart(2, '0')}`;
+            }
+
+            function setVideoDurationDisplay(seconds) {
+                if (!videoMeta || !videoDurationText) return;
+                if (!Number.isFinite(seconds) || seconds <= 0) {
+                    videoMeta.classList.add('hidden');
+                    return;
+                }
+                videoDurationText.innerText = formatDurationLabel(seconds);
+                videoMeta.classList.remove('hidden');
+            }
+
+            function hideVideoDurationDisplay() {
+                if (!videoMeta) return;
+                videoMeta.classList.add('hidden');
+                if (videoDurationText) videoDurationText.innerText = '0:00';
+            }
+
+            mainVideo.addEventListener('loadedmetadata', () => {
+                setVideoDurationDisplay(mainVideo.duration);
+                applyVideoAspectFromElement();
+            });
+            mainVideo.addEventListener('durationchange', () => {
+                setVideoDurationDisplay(mainVideo.duration);
+            });
+
+            function resetPlayerShellAspect() {
+                if (!playerShell) return;
+                playerShell.style.aspectRatio = '16 / 9';
+                playerShell.style.maxWidth = '';
+                playerShell.style.maxHeight = '';
+            }
+
+            function applyVideoAspectFromElement() {
+                if (!playerShell || !mainVideo) return;
+                const w = mainVideo.videoWidth;
+                const h = mainVideo.videoHeight;
+                if (!w || !h) return;
+                playerShell.style.aspectRatio = `${w} / ${h}`;
+                if (h > w) {
+                    const isMobile = window.innerWidth < 640;
+                    if (isMobile) {
+                        playerShell.style.maxWidth = '';
+                        playerShell.style.maxHeight = `${Math.round(window.innerHeight * 0.78)}px`;
+                    } else {
+                        playerShell.style.maxHeight = `${Math.round(window.innerHeight * 0.82)}px`;
+                        playerShell.style.maxWidth = `${Math.round((window.innerHeight * 0.82) * (w / h))}px`;
+                    }
+                } else {
+                    playerShell.style.maxWidth = '';
+                    playerShell.style.maxHeight = '';
+                }
+            }
+
+            window.addEventListener('resize', () => {
+                if (!playerArea.classList.contains('hidden')) applyVideoAspectFromElement();
+            });
+
+            function escapeHtml(value) {
+                return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+            }
+
+            async function postStat(path) {
+                try {
+                    await fetch(path, { method: 'POST' });
+                } catch {
+                    console.log('Gagal mengirim statistik.');
+                }
+            }
+
+            function showEmpty(title = 'Konten belum tersedia.', message = 'Silakan kembali lagi nanti.') {
+                displayTitle.innerText = title;
+                emptyTitle.innerText = title;
+                emptyMessage.innerText = message;
+                emptyState.classList.remove('hidden');
+                folderShell.classList.add('hidden');
+                picShell.classList.add('hidden');
+                playerArea.classList.add('hidden');
+                videoActions.classList.add('hidden');
+                hideVideoDurationDisplay();
+                resetPlayerShellAspect();
+            }
+
+            function seekBy(seconds) {
+                if (!mainVideo.duration) return;
+                mainVideo.currentTime = Math.min(Math.max(mainVideo.currentTime + seconds, 0), mainVideo.duration);
+            }
+
+            function clearFallbackAction() {
+                fallbackAction.classList.add('hidden');
+                fallbackAction.innerHTML = '';
+            }
+
+            function showBlockerNotice() {
+                sponsorBlockerDetected = true;
+                showEmpty(
+                    'Matikan Adblocker untuk lanjut',
+                    'Sponsor tidak bisa dibuka karena ada adblocker, AdGuard, DNS filter, private blocker, atau tool sejenis. Matikan dulu blocker untuk website ini, lalu refresh halaman.'
+                );
+            }
+
+            function loadSponsorCheckScript() {
+                return new Promise(resolve => {
+                    window.__webaffSponsorCheck = false;
+                    const script = document.createElement('script');
+                    script.src = `/ads-prebid-sponsor-check.js?t=${Date.now()}`;
+                    script.async = true;
+                    script.onload = () => resolve(window.__webaffSponsorCheck === true);
+                    script.onerror = () => resolve(false);
+                    document.head.appendChild(script);
+                    setTimeout(() => resolve(window.__webaffSponsorCheck === true), 1800);
+                });
+            }
+
+            async function detectSponsorBlocker() {
+                const bait = document.createElement('div');
+                bait.className = 'adsbox ad ads ad-unit ad-banner adsbygoogle sponsor-ad pub_300x250 textads banner-ad';
+                bait.style.cssText = 'position:absolute;left:-10000px;top:-10000px;width:300px;height:250px;pointer-events:none;';
+                document.body.appendChild(bait);
+                await new Promise(resolve => setTimeout(resolve, 120));
+                const style = window.getComputedStyle(bait);
+                const baitBlocked = bait.offsetHeight === 0
+                    || bait.offsetWidth === 0
+                    || style.display === 'none'
+                    || style.visibility === 'hidden'
+                    || Number(style.opacity || 1) === 0;
+                bait.remove();
+                const scriptAllowed = await loadSponsorCheckScript();
+                return baitBlocked || !scriptAllowed;
+            }
+
+            async function ensureSponsorAllowed() {
+                if (sponsorBlockerDetected) return false;
+                const blocked = await detectSponsorBlocker();
+                if (blocked) {
+                    showBlockerNotice();
+                    return false;
+                }
+                return true;
+            }
+
+            function getDirectLinks() {
+                return Array.isArray(activeVideo?.adUrls) && activeVideo.adUrls.length
+                    ? activeVideo.adUrls
+                    : [activeVideo?.adUrl].filter(Boolean);
+            }
+
+            function getCurrentDirectUrl() {
+                const directLinks = getDirectLinks();
+                return directLinks[Math.min(currentClickCount, directLinks.length - 1)];
+            }
+
+            function resetVerification() {
+                if (verificationState?.timer) clearTimeout(verificationState.timer);
+                if (verificationState?.closeTimer) clearTimeout(verificationState.closeTimer);
+                verificationState = null;
+                clearFallbackAction();
+            }
+
+            async function revealVideo({ skipViewPost = false } = {}) {
+                resetVerification();
+                adOverlay.classList.add('hidden');
+                videoActions.classList.remove('hidden');
+                if (!viewCounted && !skipViewPost) {
+                    viewCounted = true;
+                    await postStat(`/api/public/videos/${activeVideo.id}/view`);
+                }
+                mainVideo.play().catch(() => console.log('Autoplay dicegah browser.'));
+            }
+
+            async function countVerifiedClick() {
+                currentClickCount += 1;
+                await postStat(`/api/public/videos/${activeVideo.id}/click`);
+
+                if (currentClickCount >= Number(activeVideo.requiredClicks || 1)) {
+                    if (activeVideo.folderId) {
+                        setFolderUnlock(activeVideo.folderId);
+                    }
+                    await revealVideo();
+                    return;
+                }
+
+                resetVerification();
+                const remainingClicks = Number(activeVideo.requiredClicks || 1) - currentClickCount;
+                statusText.innerText = `Terverifikasi. Klik ${remainingClicks} link lagi untuk memutar`;
+            }
+
+            async function tryCompleteVerification() {
+                if (!verificationState || verificationState.completed) return;
+
+                const now = Date.now();
+                const elapsed = now - verificationState.startedAt;
+                const awayTime = verificationState.lostFocusAt && verificationState.returnedAt
+                    ? verificationState.returnedAt - verificationState.lostFocusAt
+                    : 0;
+
+                if (elapsed < VERIFY_DELAY_MS) {
+                    const remaining = Math.ceil((VERIFY_DELAY_MS - elapsed) / 1000);
+                    statusText.innerText = `Tunggu ${remaining} detik lagi, lalu kembali ke halaman ini`;
+                    return;
+                }
+
+                if (!verificationState.lostFocusAt || !verificationState.returnedAt || awayTime < MIN_AWAY_MS) {
+                    statusText.innerText = 'Buka link sponsor dulu, lalu kembali ke halaman ini untuk lanjut';
+                    return;
+                }
+
+                verificationState.completed = true;
+                await countVerifiedClick();
+            }
+
+            function closeSponsorTabAndReturn() {
+                if (!verificationState || verificationState.completed || verificationState.closeAttempted) return;
+                verificationState.closeAttempted = true;
+
+                if (verificationState.openedWindow && !verificationState.openedWindow.closed) {
+                    try {
+                        verificationState.openedWindow.close();
+                    } catch {
+                        // Some browsers block programmatic close after cross-origin navigation.
+                    }
+                }
+
+                try {
+                    window.focus();
+                } catch {
+                    // Browser focus rules are intentionally strict.
+                }
+
+                if (verificationState.lostFocusAt && !verificationState.returnedAt) {
+                    verificationState.returnedAt = Date.now();
+                }
+            }
+
+            function beginVerification(openedWindow = null) {
+                resetVerification();
+                verificationState = {
+                    startedAt: Date.now(),
+                    lostFocusAt: null,
+                    returnedAt: null,
+                    openedWindow,
+                    closeAttempted: false,
+                    completed: false,
+                    closeTimer: openedWindow ? setTimeout(() => {
+                        closeSponsorTabAndReturn();
+                    }, AUTO_CLOSE_SPONSOR_MS) : null,
+                    timer: setTimeout(() => {
+                        tryCompleteVerification();
+                    }, VERIFY_DELAY_MS)
+                };
+                statusText.innerText = 'Link sponsor dibuka. Kembali otomatis, lalu tunggu sebentar';
+            }
+
+            function renderBlockedPopupFallback(url) {
+                fallbackAction.classList.remove('hidden');
+                fallbackAction.innerHTML = `
+                    <a id="manualSponsorLink" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="bg-neutral-100 hover:bg-white text-neutral-950 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                        Buka link sponsor
+                    </a>
+                    <p class="text-xs text-neutral-500">Popup diblokir browser. Buka link manual, tunggu sebentar, lalu kembali ke sini.</p>
+                `;
+                const manualLink = document.getElementById('manualSponsorLink');
+                manualLink.addEventListener('click', () => {
+                    beginVerification();
+                }, { once: true });
+            }
+
+            function markPageLeft() {
+                if (!verificationState || verificationState.completed || verificationState.lostFocusAt) return;
+                verificationState.lostFocusAt = Date.now();
+            }
+
+            function markPageReturned() {
+                if (!verificationState || verificationState.completed || !verificationState.lostFocusAt) return;
+                verificationState.returnedAt = Date.now();
+                tryCompleteVerification();
+            }
+
+            window.addEventListener('blur', markPageLeft);
+            window.addEventListener('focus', markPageReturned);
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    markPageLeft();
+                } else {
+                    markPageReturned();
+                }
+            });
+
+            async function loadFolder(code) {
+                try {
+                    hideVideoDurationDisplay();
+                    const response = await fetch(`/api/public/folders/${encodeURIComponent(code)}`);
+                    const data = await response.json();
+                    const folder = data.folder;
+                    if (!folder || !folder.videos.length) {
+                        showEmpty('Folder belum tersedia', 'Folder ini dimatikan atau belum memiliki video.');
+                        return;
+                    }
+
+                    const folderUnlocked = isFolderUnlocked(folder.id);
+                    displayTitle.innerHTML = folderUnlocked
+                        ? `${escapeHtml(folder.title)} <span class="ml-2 align-middle text-xs sm:text-sm font-medium bg-green-500/15 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-md">Bebas iklan ${escapeHtml(formatUnlockRemaining(getFolderUnlockRemainingMs(folder.id)))}</span>`
+                        : escapeHtml(folder.title);
+                    emptyState.classList.add('hidden');
+                    playerArea.classList.add('hidden');
+                    picShell.classList.add('hidden');
+                    folderShell.classList.remove('hidden');
+                    folderVideoList.innerHTML = '';
+
+                    if (folder.hasPics) {
+                        const picLink = document.createElement('a');
+                        picLink.href = folder.picUrl || `/pic/${encodeURIComponent(folder.shortCode || folder.id)}`;
+                        picLink.className = 'group bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl sm:rounded-2xl overflow-hidden transition-colors shadow-lg';
+                        const previews = Array.isArray(folder.picPreviews) ? folder.picPreviews : [];
+                        const collageCells = [];
+                        for (let cellIndex = 0; cellIndex < 4; cellIndex += 1) {
+                            const preview = previews[cellIndex];
+                            if (preview && preview.imageUrl) {
+                                collageCells.push(`<div class="bg-neutral-950 overflow-hidden"><img src="${escapeHtml(preview.imageUrl)}" loading="lazy" alt="" class="w-full h-full object-cover select-none pointer-events-none"></div>`);
+                            } else {
+                                collageCells.push('<div class="bg-neutral-900 flex items-center justify-center"><span class="text-[10px] text-neutral-600">PIC</span></div>');
+                            }
+                        }
+                        const totalPics = Number(folder.picCount || previews.length || 0);
+                        picLink.innerHTML = `
+                            <div class="relative aspect-video bg-neutral-950 overflow-hidden">
+                                ${previews.length === 0
+                                    ? '<div class="absolute inset-0 flex items-center justify-center"><div class="text-center"><p class="text-3xl sm:text-4xl font-semibold text-white">PIC</p><p class="text-[10px] sm:text-xs text-neutral-500 mt-1 sm:mt-2">Galeri foto</p></div></div>'
+                                    : `<div class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-0.5">${collageCells.join('')}</div>`}
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent"></div>
+                                <span class="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 bg-black/60 text-white text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5 rounded-md backdrop-blur-sm">PIC${totalPics ? ` ${totalPics}` : ''}</span>
+                            </div>
+                            <div class="p-2 sm:p-4">
+                                <p class="text-xs sm:text-base font-medium text-white line-clamp-2 leading-tight">${escapeHtml(folder.title)} pic</p>
+                                <p class="hidden sm:block text-sm text-neutral-500 mt-2">Klik untuk membuka foto</p>
+                            </div>
+                        `;
+                        folderVideoList.appendChild(picLink);
+                    }
+
+                    folder.videos.forEach(video => {
+                        const link = document.createElement('a');
+                        link.href = `/v/${encodeURIComponent(video.shortCode || video.id)}`;
+                        link.className = 'group bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl sm:rounded-2xl overflow-hidden transition-colors shadow-lg';
+                        const thumbUrl = video.thumbUrl || `/thumbs/${encodeURIComponent(video.shortCode || video.id)}.jpg`;
+                        link.innerHTML = `
+                            <div class="relative aspect-video bg-black overflow-hidden">
+                                <img src="${escapeHtml(thumbUrl)}" loading="lazy" alt="" class="w-full h-full object-contain bg-black opacity-90 group-hover:opacity-100 transition-opacity select-none pointer-events-none" onerror="this.style.display='none'">
+                                <div class="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/10 transition-colors">
+                                    <div class="bg-neutral-950/80 border border-white/10 rounded-full p-2 sm:p-4">
+                                        <svg class="w-5 h-5 sm:w-8 sm:h-8 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-2 sm:p-4">
+                                <p class="text-xs sm:text-base font-medium text-white line-clamp-2 leading-tight">${escapeHtml(video.title)}</p>
+                                <p class="hidden sm:block text-sm text-neutral-500 mt-2">Klik untuk menonton</p>
+                            </div>
+                        `;
+                        folderVideoList.appendChild(link);
+                    });
+                } catch {
+                    showEmpty('Folder gagal dimuat', 'Terjadi gangguan saat membuka folder.');
+                }
+            }
+
+            async function loadPic(code) {
+                try {
+                    hideVideoDurationDisplay();
+                    const response = await fetch(`/api/public/pics/${encodeURIComponent(code)}`);
+                    const data = await response.json();
+                    activePic = data.pic;
+                    picClickCount = 0;
+
+                    if (!activePic || !activePic.images.length) {
+                        showEmpty('Galeri foto belum tersedia', 'Folder ini belum memiliki foto.');
+                        return;
+                    }
+
+                    const folderUnlocked = isFolderUnlocked(activePic.id);
+                    if (!folderUnlocked && !await ensureSponsorAllowed()) return;
+
+                    displayTitle.innerText = activePic.title;
+                    emptyState.classList.add('hidden');
+                    folderShell.classList.add('hidden');
+                    playerArea.classList.add('hidden');
+                    picShell.classList.remove('hidden');
+                    picImageList.innerHTML = '';
+
+                    activePic.images.forEach(image => {
+                        const item = document.createElement('div');
+                        item.className = 'bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg';
+                        item.innerHTML = `
+                            <img src="${escapeHtml(image.imageUrl)}" alt="${escapeHtml(image.title)}" loading="lazy" class="w-full aspect-video object-contain bg-black select-none pointer-events-none">
+                            <div class="p-2 sm:p-4">
+                                <p class="text-[11px] sm:text-sm text-neutral-300 truncate">${escapeHtml(image.title)}</p>
+                            </div>
+                        `;
+                        picImageList.appendChild(item);
+                    });
+
+                    if (folderUnlocked) {
+                        unlockPicGallery();
+                        return;
+                    }
+
+                    picLock.classList.remove('hidden');
+                    picImageList.classList.add('hidden');
+                    picStatusText.innerText = 'Klik untuk membuka galeri foto';
+                } catch {
+                    showEmpty('Galeri foto gagal dimuat', 'Terjadi gangguan saat membuka foto.');
+                }
+            }
+
+            function getPicDirectUrl() {
+                const directLinks = Array.isArray(activePic?.adUrls) && activePic.adUrls.length
+                    ? activePic.adUrls
+                    : [activePic?.adUrl].filter(Boolean);
+                return directLinks[Math.min(picClickCount, directLinks.length - 1)];
+            }
+
+            function unlockPicGallery() {
+                picLock.classList.add('hidden');
+                picImageList.classList.remove('hidden');
+                picStatusText.innerText = 'Galeri foto terbuka';
+            }
+
+            async function loadVideo(code = null) {
+                try {
+                    const endpoint = code ? `/api/public/videos/${encodeURIComponent(code)}` : '/api/public/active-video';
+                    const response = await fetch(endpoint);
+                    const data = await response.json();
+                    activeVideo = data.video;
+
+                    if (!activeVideo) {
+                        showEmpty('Video belum tersedia', 'Video ini dimatikan atau belum tersedia.');
+                        return;
+                    }
+
+                    const folderUnlocked = isFolderUnlocked(activeVideo.folderId);
+                    if (!folderUnlocked && !await ensureSponsorAllowed()) return;
+
+                    displayTitle.innerText = activeVideo.title;
+                    emptyState.classList.add('hidden');
+                    folderShell.classList.add('hidden');
+                    picShell.classList.add('hidden');
+                    playerArea.classList.remove('hidden');
+                    resetPlayerShellAspect();
+                    mainVideo.src = activeVideo.videoUrl;
+                    mainVideo.load();
+                    currentClickCount = 0;
+                    viewCounted = false;
+                    resetVerification();
+
+                    if (folderUnlocked) {
+                        await revealVideo();
+                        return;
+                    }
+
+                    adOverlay.classList.remove('hidden');
+                    videoActions.classList.add('hidden');
+                    statusText.innerText = 'Klik untuk memutar video';
+                } catch {
+                    showEmpty('Video gagal dimuat', 'Terjadi gangguan saat membuka video.');
+                }
+            }
+
+            rewindBtn.addEventListener('click', () => seekBy(-10));
+            forwardBtn.addEventListener('click', () => seekBy(10));
+
+            document.addEventListener('keydown', event => {
+                if (adOverlay.classList.contains('hidden') && event.key === 'ArrowLeft') seekBy(-10);
+                if (adOverlay.classList.contains('hidden') && event.key === 'ArrowRight') seekBy(10);
+            });
+
+            adOverlay.addEventListener('click', async () => {
+                if (!activeVideo) return;
+                if (!await ensureSponsorAllowed()) return;
+
+                if (verificationState) {
+                    await tryCompleteVerification();
+                    return;
+                }
+
+                const directUrl = getCurrentDirectUrl();
+                if (!directUrl) {
+                    await countVerifiedClick();
+                    return;
+                }
+
+                const openedWindow = window.open(directUrl, '_blank');
+                if (!openedWindow) {
+                    showBlockerNotice();
+                    return;
+                }
+
+                try {
+                    openedWindow.opener = null;
+                } catch {
+                    // Browser may block access to the opened tab; the link still opened.
+                }
+
+                beginVerification(openedWindow);
+            });
+
+            picLock.addEventListener('click', async () => {
+                if (!activePic) return;
+                if (!await ensureSponsorAllowed()) return;
+                const directUrl = getPicDirectUrl();
+                let openedWindow = null;
+                if (directUrl) {
+                    openedWindow = window.open(directUrl, '_blank');
+                    if (!openedWindow) {
+                        showBlockerNotice();
+                        return;
+                    }
+                    if (openedWindow) {
+                        setTimeout(() => {
+                            try {
+                                openedWindow.close();
+                                window.focus();
+                            } catch {}
+                        }, AUTO_CLOSE_SPONSOR_MS);
+                    }
+                }
+
+                picLock.classList.add('pointer-events-none', 'opacity-70');
+                picStatusText.innerText = 'Sponsor dibuka. Tunggu sebentar...';
+                setTimeout(() => {
+                    picClickCount += 1;
+                    postStat(`/api/public/pics/${activePic.id}/click`).catch(() => {});
+                    const remaining = Number(activePic.requiredClicks || 1) - picClickCount;
+                    picLock.classList.remove('pointer-events-none', 'opacity-70');
+                    if (picClickCount >= Number(activePic.requiredClicks || 1)) {
+                        if (activePic.id) setFolderUnlock(activePic.id);
+                        unlockPicGallery();
+                    } else {
+                        picStatusText.innerText = `Klik ${remaining} kali lagi untuk membuka galeri`;
+                    }
+                }, VERIFY_DELAY_MS);
+            });
+
+            const folderMatch = window.location.pathname.match(/^\/f\/([^/]+)$/);
+            const picMatch = window.location.pathname.match(/^\/pic\/([^/]+)$/);
+            const videoMatch = window.location.pathname.match(/^\/(?:watch|v)\/([^/]+)$/);
+
+            if (folderMatch) {
+                await loadFolder(decodeURIComponent(folderMatch[1]));
+            } else if (picMatch) {
+                await loadPic(decodeURIComponent(picMatch[1]));
+            } else if (videoMatch) {
+                await loadVideo(decodeURIComponent(videoMatch[1]));
+            } else {
+                await loadVideo();
+            }
+        });
+    </script>
+</body>
+</html>

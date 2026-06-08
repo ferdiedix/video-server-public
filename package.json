@@ -1,0 +1,12 @@
+{
+  "name": "webaff-video-fokus",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "telegram:auth": "node telegram-auth.js"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
+}

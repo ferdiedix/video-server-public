@@ -1,0 +1,2149 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Video Fokus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-neutral-950 text-neutral-100 font-sans antialiased min-h-screen">
+    <div id="loginGate" class="fixed inset-0 z-[100] bg-neutral-950 flex items-center justify-center p-4">
+        <form id="loginForm" class="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div>
+                <p class="text-sm text-blue-400 font-medium">Admin Panel</p>
+                <h1 class="text-2xl font-semibold text-white mt-1">Masuk Pengelola</h1>
+                <p class="text-sm text-neutral-400 mt-2">Masukkan PIN admin untuk mengatur video.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-neutral-400 mb-1.5">PIN Admin</label>
+                <input id="pinInput" type="password" inputmode="numeric" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                <p id="pinError" class="hidden text-sm text-red-400 mt-2">PIN salah atau akses sedang diblokir.</p>
+            </div>
+            <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-all active:scale-[0.98]">Masuk</button>
+        </form>
+    </div>
+
+    <nav class="bg-neutral-900 border-b border-neutral-800 p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
+            <div class="flex items-center justify-between gap-3">
+                <h1 class="text-xl font-bold text-white">Admin Video Fokus</h1>
+                <button id="navToggle" type="button" class="lg:hidden bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Menu</button>
+            </div>
+            <div id="navLinks" class="hidden grid grid-cols-2 gap-2 w-full lg:w-auto lg:flex lg:flex-row lg:flex-wrap">
+                <a id="videoPageNav" href="/admin" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Upload Video</a>
+                <a id="imagePageNav" href="/admin/images" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Upload Gambar</a>
+                <a id="linkPageNav" href="/admin/links" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Bank Direct Link</a>
+                <a id="botPageNav" href="/admin/telegram-bot" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Telegram Bot</a>
+                <a id="clipPageNav" href="/admin/clips" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Potong Video</a>
+                <a href="/" target="_blank" class="block bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Buka Halaman User</a>
+                <button id="logoutBtn" class="block col-span-2 lg:col-span-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center">Keluar</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="toast" class="fixed top-20 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-x-full opacity-0 z-50">
+        <span id="toastMessage">Berhasil disimpan!</span>
+    </div>
+
+    <main class="w-full max-w-7xl mx-auto p-3 sm:p-8 space-y-4 sm:space-y-8">
+        <section id="statsSection" class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg min-h-[112px] sm:min-h-0">
+                <p class="text-sm font-medium text-neutral-400">Total Video</p>
+                <p id="statTotalVideo" class="text-3xl sm:text-3xl font-bold text-white mt-2">0</p>
+            </div>
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg min-h-[112px] sm:min-h-0">
+                <p class="text-sm font-medium text-neutral-400">Total Folder</p>
+                <p id="statTotalFolder" class="text-3xl sm:text-3xl font-bold text-white mt-2">0</p>
+            </div>
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg col-span-2 md:col-span-1">
+                <p class="text-sm font-medium text-neutral-400">Total Tayangan</p>
+                <p id="statTotalViews" class="text-3xl sm:text-3xl font-bold text-white mt-2">0</p>
+                <div id="viewPeriodStats" class="grid grid-cols-4 md:grid-cols-2 gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-neutral-400 mt-3 sm:mt-4"></div>
+            </div>
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg col-span-2 md:col-span-1">
+                <p class="text-sm font-medium text-neutral-400">Total Klik Iklan</p>
+                <p id="statTotalClicks" class="text-3xl sm:text-3xl font-bold text-white mt-2">0</p>
+                <div id="clickPeriodStats" class="grid grid-cols-4 md:grid-cols-2 gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-neutral-400 mt-3 sm:mt-4"></div>
+            </div>
+        </section>
+
+        <section id="analyticsSection" class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg overflow-hidden">
+            <div class="flex flex-col gap-1 sm:gap-2 sm:flex-row sm:items-end sm:justify-between mb-4 sm:mb-6">
+                <div>
+                    <p class="text-xs sm:text-sm text-blue-400 font-medium">Analytics Hari Ini</p>
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">Grafik Per Jam</h2>
+                </div>
+                <p id="analyticsMeta" class="text-xs sm:text-sm text-neutral-500">Tayangan vs klik iklan</p>
+            </div>
+            <div id="hourlyChart" class="h-48 sm:h-72 bg-neutral-950 border border-neutral-800 rounded-xl p-3 sm:p-4 flex items-end gap-1 overflow-x-auto"></div>
+            <div class="mt-3 sm:mt-4 flex flex-wrap gap-4 text-xs text-neutral-400">
+                <span class="inline-flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-blue-500"></span>Tayangan</span>
+                <span class="inline-flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-purple-500"></span>Klik iklan</span>
+            </div>
+        </section>
+
+        <section id="serverSection" class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg overflow-hidden">
+            <div class="flex flex-col gap-1 sm:gap-2 sm:flex-row sm:items-end sm:justify-between mb-4 sm:mb-6">
+                <div>
+                    <p class="text-xs sm:text-sm text-blue-400 font-medium">Live VPS Monitor</p>
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">Status Server</h2>
+                </div>
+                <div class="flex items-center justify-between gap-3 sm:block">
+                    <p id="serverStatusMeta" class="text-xs sm:text-sm text-neutral-500">Memuat status...</p>
+                    <button id="serverMobileToggle" type="button" class="sm:hidden bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-medium px-3 py-2 rounded-lg">Detail</button>
+                </div>
+            </div>
+            <div id="serverDetailsBody" class="hidden sm:grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                    <div class="flex justify-between text-sm text-neutral-400"><span>CPU Load</span><span id="cpuText">0%</span></div>
+                    <div class="h-2 bg-neutral-800 rounded-full mt-3 sm:mt-4 overflow-hidden"><div id="cpuBar" class="h-full bg-blue-500 rounded-full" style="width:0%"></div></div>
+                    <p id="cpuDetail" class="text-[11px] sm:text-xs text-neutral-500 mt-2 sm:mt-3 truncate">-</p>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                    <div class="flex justify-between text-sm text-neutral-400"><span>RAM</span><span id="ramText">0%</span></div>
+                    <div class="h-2 bg-neutral-800 rounded-full mt-3 sm:mt-4 overflow-hidden"><div id="ramBar" class="h-full bg-green-500 rounded-full" style="width:0%"></div></div>
+                    <p id="ramDetail" class="text-[11px] sm:text-xs text-neutral-500 mt-2 sm:mt-3 truncate">-</p>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                    <div class="flex justify-between text-sm text-neutral-400"><span>Storage</span><span id="storageText">0%</span></div>
+                    <div class="h-2 bg-neutral-800 rounded-full mt-3 sm:mt-4 overflow-hidden"><div id="storageBar" class="h-full bg-purple-500 rounded-full" style="width:0%"></div></div>
+                    <p id="storageDetail" class="text-[11px] sm:text-xs text-neutral-500 mt-2 sm:mt-3 truncate">-</p>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                    <div class="flex justify-between text-sm text-neutral-400"><span>Network</span><span id="networkText">Live</span></div>
+                    <div class="mt-3 sm:mt-4 grid grid-cols-2 gap-2 sm:gap-3">
+                        <div><p class="text-[11px] sm:text-xs text-neutral-500">Down</p><p id="networkDown" class="text-sm sm:text-lg font-semibold text-white">0 KB/s</p></div>
+                        <div><p class="text-[11px] sm:text-xs text-neutral-500">Up</p><p id="networkUp" class="text-sm sm:text-lg font-semibold text-white">0 KB/s</p></div>
+                    </div>
+                    <p id="networkDetail" class="text-[11px] sm:text-xs text-neutral-500 mt-2 sm:mt-3 truncate">-</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="backupSection" class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg overflow-hidden">
+            <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between mb-4 sm:mb-6">
+                <div>
+                    <p class="text-xs sm:text-sm text-blue-400 font-medium">Telegram Media Backup</p>
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">Backup & Restore</h2>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <p id="telegramBackupMeta" class="text-xs sm:text-sm text-neutral-500">Memuat status backup...</p>
+                    <div class="flex gap-2">
+                        <button id="backupAllBtn" type="button" class="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Backup All</button>
+                        <button id="restoreAllBtn" type="button" class="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Restore All</button>
+                    </div>
+                </div>
+                <button id="backupMobileToggle" type="button" class="sm:hidden bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-medium px-3 py-2 rounded-lg">Detail Backup</button>
+            </div>
+            <div id="backupDetailsBody" class="hidden sm:block">
+                <div id="telegramBackupCards" class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4"></div>
+            </div>
+        </section>
+
+        <section id="compressionSection" class="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg overflow-hidden">
+            <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between mb-4 sm:mb-6">
+                <div>
+                    <p class="text-xs sm:text-sm text-emerald-400 font-medium">Antrian Kompresi Video</p>
+                    <h2 class="text-xl sm:text-2xl font-semibold text-white">Compress Manager</h2>
+                    <p id="compressionMeta" class="text-xs sm:text-sm text-neutral-500 mt-1">Memuat status kompresi...</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button id="compressAllBtn" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Auto Compress All</button>
+                    <button id="compressForceAllBtn" type="button" class="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors">Paksa Semua</button>
+                </div>
+            </div>
+            <div id="compressionBody" class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-1">Sedang dikompres</p>
+                    <p id="compressionCurrentTitle" class="text-sm font-medium text-white truncate">-</p>
+                    <p id="compressionCurrentDetail" class="text-[11px] text-neutral-500 mt-1 truncate">Tidak ada job aktif</p>
+                    <div class="h-2 bg-neutral-800 rounded-full mt-3 overflow-hidden">
+                        <div id="compressionCurrentBar" class="h-full bg-emerald-500 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <div class="flex justify-between text-[11px] text-neutral-500 mt-1">
+                        <span id="compressionCurrentTime">0:00 / 0:00</span>
+                        <span id="compressionCurrentPercent">0%</span>
+                    </div>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-2">Antrian (<span id="compressionQueueCount">0</span>)</p>
+                    <div id="compressionQueueList" class="space-y-1.5 max-h-48 overflow-auto"></div>
+                    <p id="compressionQueueEmpty" class="hidden text-xs text-neutral-600">Antrian kosong.</p>
+                </div>
+                <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                    <p class="text-xs text-neutral-500 mb-2">Riwayat terbaru</p>
+                    <div id="compressionHistoryList" class="space-y-1.5 max-h-48 overflow-auto"></div>
+                    <p id="compressionHistoryEmpty" class="hidden text-xs text-neutral-600">Belum ada riwayat.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="adminWorkspace" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            <div id="leftPanel" class="xl:col-span-1 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-lg h-fit">
+                <section id="linkBankSection" class="mb-8 border-b border-neutral-800 pb-6">
+                    <h2 class="text-xl font-medium text-neutral-100 mb-4">Bank Direct Link</h2>
+                    <form id="linkBankForm" class="space-y-3">
+                        <input type="hidden" id="linkBankEditId">
+                        <input type="text" id="linkBankLabel" placeholder="Catatan/nama link" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                        <input type="url" id="linkBankUrl" placeholder="https://..." class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="linkBankSubmitBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors">Simpan Link</button>
+                            <button id="linkBankCancelBtn" type="button" class="bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-2.5 rounded-lg transition-colors">Batal Edit</button>
+                        </div>
+                    </form>
+                    <form id="bulkLinkBankForm" class="mt-5 space-y-3 border-t border-neutral-800 pt-5">
+                        <label class="block text-sm font-medium text-neutral-400">Tambah Banyak Link</label>
+                        <textarea id="bulkLinkBankText" rows="6" placeholder="Satu URL per baris&#10;atau: Catatan | https://contoh.com" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"></textarea>
+                        <button class="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-2.5 rounded-lg transition-colors">Simpan Banyak Link</button>
+                    </form>
+                    <div id="linkBankList" class="mt-4 space-y-2 max-h-64 overflow-y-auto"></div>
+                    <p id="linkBankEmpty" class="hidden text-sm text-neutral-500 mt-4">Belum ada link tersimpan.</p>
+                </section>
+
+                <div id="uploadTabs" class="grid grid-cols-3 bg-neutral-950 border border-neutral-800 p-1 rounded-lg mb-6">
+                    <button id="singleTabBtn" class="px-3 py-2 text-sm font-medium rounded-md bg-neutral-800 text-white">Upload Satu</button>
+                    <button id="folderTabBtn" class="px-3 py-2 text-sm font-medium rounded-md text-neutral-400 hover:text-white">Upload Folder</button>
+                    <button id="imageTabBtn" class="px-3 py-2 text-sm font-medium rounded-md text-neutral-400 hover:text-white">Upload Image</button>
+                </div>
+
+                <form id="singleForm" class="space-y-5">
+                    <h2 class="text-xl font-medium text-neutral-100 border-b border-neutral-800 pb-4">Tambah Satu Video</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Judul Video</label>
+                        <input type="text" id="inputTitle" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">File Video</label>
+                        <input type="file" id="inputVideoFile" accept="video/*" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">Mode Direct Link</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm cursor-pointer">
+                                <input type="radio" name="singleDirectMode" value="same" checked class="mr-2">Sama
+                            </label>
+                            <label class="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm cursor-pointer">
+                                <input type="radio" name="singleDirectMode" value="different" class="mr-2">Beda-beda
+                            </label>
+                        </div>
+                    </div>
+                    <div id="singleSameDirectGroup">
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">URL Direct</label>
+                        <input type="url" id="inputAdUrl" placeholder="https://..." class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div id="singleDifferentDirectGroup" class="hidden space-y-3"></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" id="singleAutoFillBtn" class="bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium py-2 rounded-lg">Auto isi random</button>
+                        <button type="button" id="singleClearLinksBtn" class="bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium py-2 rounded-lg">Kosongkan link</button>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Syarat Klik Iklan</label>
+                        <input type="number" id="inputClicks" value="2" min="1" max="10" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                    </div>
+                    <button id="singleSubmitBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-all active:scale-[0.98]">Tambah Video</button>
+                </form>
+
+                <form id="folderForm" class="hidden space-y-5">
+                    <h2 class="text-xl font-medium text-neutral-100 border-b border-neutral-800 pb-4">Tambah Folder Video</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Nama Folder</label>
+                        <input type="text" id="folderTitle" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Pilih Banyak Video</label>
+                        <input type="file" id="folderVideoFiles" accept="video/*,image/png,image/jpeg,image/webp,image/gif" multiple class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">Mode Direct Link Folder</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm cursor-pointer">
+                                <input type="radio" name="folderAdMode" value="same" checked class="mr-2">Sama semua
+                            </label>
+                            <label class="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm cursor-pointer">
+                                <input type="radio" name="folderAdMode" value="different" class="mr-2">Beda-beda
+                            </label>
+                        </div>
+                    </div>
+                    <div id="sameAdGroup">
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">URL Direct Semua Video</label>
+                        <input type="url" id="folderSameAdUrl" placeholder="https://..." class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div id="differentAdGroup" class="hidden max-h-[28rem] overflow-y-auto rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 pr-2 space-y-3"></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" id="folderAutoFillBtn" class="bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium py-2 rounded-lg">Auto isi random</button>
+                        <button type="button" id="folderClearLinksBtn" class="bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium py-2 rounded-lg">Kosongkan link</button>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Syarat Klik Iklan</label>
+                        <input type="number" id="folderClicks" value="2" min="1" max="10" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                    </div>
+                    <button id="folderSubmitBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-all active:scale-[0.98]">Upload Folder</button>
+                </form>
+
+                <form id="imageForm" class="hidden space-y-5">
+                    <h2 class="text-xl font-medium text-neutral-100 border-b border-neutral-800 pb-4">Upload Image</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">Judul/Catatan Image</label>
+                        <input type="text" id="imageTitle" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" placeholder="Opsional">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-1.5">File Image</label>
+                        <input type="file" id="imageFile" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer" required>
+                    </div>
+                    <button id="imageSubmitBtn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-all active:scale-[0.98]">Upload Image</button>
+                </form>
+
+                <section id="telegramBotSection" class="hidden space-y-5">
+                    <h2 class="text-xl font-medium text-neutral-100 border-b border-neutral-800 pb-4">Telegram Bot Sender</h2>
+                    <form id="telegramBotConfigForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-400 mb-1.5">Bot Token</label>
+                            <input type="password" id="botTokenInput" placeholder="Kosongkan jika tidak ingin mengganti token" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                            <p id="botTokenPreview" class="text-xs text-neutral-500 mt-1">Belum disetting.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-400 mb-1.5">Chat ID / Username Grup</label>
+                            <input type="text" id="botChatIdInput" placeholder="@namagrup atau -100..." class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                        </div>
+                        <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg">Simpan Bot</button>
+                    </form>
+                    <form id="telegramBotSendForm" class="space-y-4 border-t border-neutral-800 pt-5">
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-400 mb-1.5">Deskripsi / Caption</label>
+                            <textarea id="botDescriptionInput" rows="6" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500" placeholder="Tulis caption yang akan dikirim ke Telegram"></textarea>
+                        </div>
+                        <button id="telegramBotSendBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg">Kirim ke Telegram</button>
+                    </form>
+                </section>
+
+                <section id="clipToolSection" class="hidden space-y-5">
+                    <h2 class="text-xl font-medium text-neutral-100 border-b border-neutral-800 pb-4">Potong Video</h2>
+                    <form id="clipForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-400 mb-1.5">Pilih Video</label>
+                            <select id="clipVideoSelect" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required></select>
+                            <div id="clipVideoPicker" class="mt-3 max-h-96 overflow-y-auto rounded-xl border border-neutral-800 bg-neutral-950 p-3 space-y-3"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-400 mb-1.5">Mulai detik</label>
+                                <input type="number" id="clipStartInput" min="0" step="0.1" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-400 mb-1.5">Selesai detik</label>
+                                <input type="number" id="clipEndInput" min="0.1" step="0.1" value="3" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" required>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-400 mb-1.5">Judul Klip</label>
+                            <input type="text" id="clipTitleInput" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" placeholder="Opsional">
+                        </div>
+                        <button type="button" id="clipPreviewBtn" class="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-2.5 rounded-lg">Preview Range</button>
+                        <button id="clipSubmitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg">Buat Klip</button>
+                    </form>
+                </section>
+            </div>
+
+            <div id="rightPanel" class="xl:col-span-2 space-y-8">
+                <section id="telegramBotMediaSection" class="hidden bg-neutral-900 border border-neutral-800 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="p-6 border-b border-neutral-800">
+                        <h2 class="text-xl font-medium text-neutral-100">Pilih Media Telegram</h2>
+                        <p id="telegramBotMeta" class="text-sm text-neutral-500 mt-1">Pilih video/foto yang akan dikirim ke grup.</p>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
+                        <div>
+                            <h3 class="text-sm font-semibold text-neutral-300 mb-3">Video</h3>
+                            <div id="botVideoList" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-semibold text-neutral-300 mb-3">Foto</h3>
+                            <div id="botImageList" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="clipPreviewSection" class="hidden bg-neutral-900 border border-neutral-800 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="p-6 border-b border-neutral-800">
+                        <h2 class="text-xl font-medium text-neutral-100">Preview Klip</h2>
+                        <p class="text-sm text-neutral-500 mt-1">Preview ini hanya membatasi playback di browser. File klip baru dibuat setelah tombol Buat Klip ditekan.</p>
+                    </div>
+                    <div class="p-6">
+                        <div class="aspect-video bg-black rounded-xl overflow-hidden border border-neutral-800">
+                            <video id="clipPreviewVideo" controls class="w-full h-full object-contain"></video>
+                        </div>
+                        <div id="clipResultBox" class="hidden mt-4 bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                            <p class="text-sm text-neutral-400 mb-2">Klip berhasil dibuat.</p>
+                            <a id="clipDownloadLink" href="#" download class="text-blue-400 hover:text-blue-300 text-sm">Download klip</a>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="imageSection" class="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-lg overflow-hidden">
+                    <button id="imageDropdownBtn" type="button" class="w-full p-6 flex items-center justify-between text-left hover:bg-neutral-800/30 transition-colors">
+                        <div>
+                            <h2 class="text-xl font-medium text-neutral-100">Daftar Image</h2>
+                            <p id="imageDropdownMeta" class="text-sm text-neutral-500 mt-1">0 image</p>
+                        </div>
+                        <span id="imageDropdownIcon" class="text-2xl text-neutral-400">+</span>
+                    </button>
+                    <div id="imageDropdownBody" class="hidden px-6 pb-6 border-t border-neutral-800">
+                        <div id="imageList" class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-6"></div>
+                        <div id="imageEmptyState" class="hidden text-center py-10 text-neutral-500">Belum ada image.</div>
+                    </div>
+                </section>
+
+                <section id="folderSection" class="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-lg overflow-hidden">
+                    <button id="folderDropdownBtn" type="button" class="w-full p-6 flex items-center justify-between text-left hover:bg-neutral-800/30 transition-colors">
+                        <div>
+                            <h2 class="text-xl font-medium text-neutral-100">Daftar Folder</h2>
+                            <p id="folderDropdownMeta" class="text-sm text-neutral-500 mt-1">0 folder</p>
+                        </div>
+                        <span id="folderDropdownIcon" class="text-2xl text-neutral-400">+</span>
+                    </button>
+                    <div id="folderDropdownBody" class="hidden px-6 pb-6 border-t border-neutral-800">
+                        <div id="folderList" class="space-y-3 pt-6"></div>
+                        <div id="folderEmptyState" class="hidden text-center py-10 text-neutral-500">Belum ada folder.</div>
+                    </div>
+                </section>
+                <section id="videoSection" class="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-lg overflow-hidden">
+                    <button id="videoDropdownBtn" type="button" class="w-full p-6 flex items-center justify-between text-left hover:bg-neutral-800/30 transition-colors">
+                        <div>
+                            <h2 class="text-xl font-medium text-neutral-100">Daftar Video</h2>
+                            <p id="videoDropdownMeta" class="text-sm text-neutral-500 mt-1">0 video</p>
+                        </div>
+                        <span id="videoDropdownIcon" class="text-2xl text-neutral-400">+</span>
+                    </button>
+                    <div id="videoDropdownBody" class="hidden px-6 pb-6 border-t border-neutral-800 overflow-x-auto">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
+                            <thead class="text-neutral-400 border-b border-neutral-800">
+                                <tr>
+                                    <th class="pb-3 font-medium px-2">Status</th>
+                                    <th class="pb-3 font-medium px-2">Judul</th>
+                                    <th class="pb-3 font-medium px-2">Folder</th>
+                                    <th class="pb-3 font-medium px-2">Views</th>
+                                    <th class="pb-3 font-medium px-2">Klik</th>
+                                    <th class="pb-3 font-medium px-2">Link</th>
+                                    <th class="pb-3 font-medium px-2">Backup</th>
+                                    <th class="pb-3 font-medium px-2">Kompresi</th>
+                                    <th class="pb-3 font-medium px-2 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="videoTableBody" class="divide-y divide-neutral-800/50"></tbody>
+                        </table>
+                        <div id="emptyState" class="hidden text-center py-12 text-neutral-500">Belum ada video.</div>
+                    </div>
+                </section>
+
+                <div id="visitorDockTop"></div>
+                <div id="visitorDockBottom"></div>
+            </div>
+        </section>
+
+        <section id="visitorSection" class="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-lg overflow-hidden transition-all">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-neutral-800 pb-4 mb-6">
+                <div>
+                    <h2 class="text-xl font-medium text-neutral-100">Visitor & Lokasi</h2>
+                    <p id="visitorFilterMeta" class="text-sm text-neutral-500 mt-1">Fokus ke pengklik iklan.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 bg-neutral-950 border border-neutral-800 p-1 rounded-lg">
+                    <button id="visitorAdClicksBtn" type="button" class="px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white">Klik Iklan</button>
+                    <button id="visitorPageViewsBtn" type="button" class="px-3 py-2 text-sm font-medium rounded-md text-neutral-400 hover:text-white">Visitor Web</button>
+                </div>
+            </div>
+            <div id="visitorMap" class="relative w-full h-72 bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden mb-6">
+                <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(to right, rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 10% 20%;"></div>
+                <p class="absolute left-4 top-4 text-xs text-neutral-500">Peta perkiraan berdasarkan GeoIP</p>
+            </div>
+            <div class="max-h-96 overflow-auto rounded-xl border border-neutral-800 bg-neutral-950/40">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="text-neutral-400 border-b border-neutral-800">
+                        <tr>
+                            <th class="pb-3 font-medium px-2">Waktu</th>
+                            <th class="pb-3 font-medium px-2">IP</th>
+                            <th class="pb-3 font-medium px-2">Lokasi</th>
+                            <th class="pb-3 font-medium px-2">Provider</th>
+                            <th class="pb-3 font-medium px-2">Konten</th>
+                        </tr>
+                    </thead>
+                    <tbody id="visitorTableBody" class="divide-y divide-neutral-800/50"></tbody>
+                </table>
+                <p id="visitorEmpty" class="hidden text-center py-10 text-neutral-500">Belum ada visitor tercatat.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const TOKEN_KEY = 'webaff_admin_token';
+            const loginGate = document.getElementById('loginGate');
+            const loginForm = document.getElementById('loginForm');
+            const pinInput = document.getElementById('pinInput');
+            const pinError = document.getElementById('pinError');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const navToggle = document.getElementById('navToggle');
+            const navLinks = document.getElementById('navLinks');
+            const videoPageNav = document.getElementById('videoPageNav');
+            const imagePageNav = document.getElementById('imagePageNav');
+            const linkPageNav = document.getElementById('linkPageNav');
+            const botPageNav = document.getElementById('botPageNav');
+            const clipPageNav = document.getElementById('clipPageNav');
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const singleTabBtn = document.getElementById('singleTabBtn');
+            const folderTabBtn = document.getElementById('folderTabBtn');
+            const imageTabBtn = document.getElementById('imageTabBtn');
+            const statsSection = document.getElementById('statsSection');
+            const serverSection = document.getElementById('serverSection');
+            const backupSection = document.getElementById('backupSection');
+            const compressionSection = document.getElementById('compressionSection');
+            const compressionMeta = document.getElementById('compressionMeta');
+            const compressionCurrentTitle = document.getElementById('compressionCurrentTitle');
+            const compressionCurrentDetail = document.getElementById('compressionCurrentDetail');
+            const compressionCurrentBar = document.getElementById('compressionCurrentBar');
+            const compressionCurrentTime = document.getElementById('compressionCurrentTime');
+            const compressionCurrentPercent = document.getElementById('compressionCurrentPercent');
+            const compressionQueueCount = document.getElementById('compressionQueueCount');
+            const compressionQueueList = document.getElementById('compressionQueueList');
+            const compressionQueueEmpty = document.getElementById('compressionQueueEmpty');
+            const compressionHistoryList = document.getElementById('compressionHistoryList');
+            const compressionHistoryEmpty = document.getElementById('compressionHistoryEmpty');
+            const compressAllBtn = document.getElementById('compressAllBtn');
+            const compressForceAllBtn = document.getElementById('compressForceAllBtn');
+            const adminWorkspace = document.getElementById('adminWorkspace');
+            const leftPanel = document.getElementById('leftPanel');
+            const rightPanel = document.getElementById('rightPanel');
+            const linkBankSection = document.getElementById('linkBankSection');
+            const uploadTabs = document.getElementById('uploadTabs');
+            const telegramBotSection = document.getElementById('telegramBotSection');
+            const telegramBotConfigForm = document.getElementById('telegramBotConfigForm');
+            const telegramBotSendForm = document.getElementById('telegramBotSendForm');
+            const telegramBotSendBtn = document.getElementById('telegramBotSendBtn');
+            const botTokenInput = document.getElementById('botTokenInput');
+            const botTokenPreview = document.getElementById('botTokenPreview');
+            const botChatIdInput = document.getElementById('botChatIdInput');
+            const botDescriptionInput = document.getElementById('botDescriptionInput');
+            const clipToolSection = document.getElementById('clipToolSection');
+            const clipForm = document.getElementById('clipForm');
+            const clipVideoSelect = document.getElementById('clipVideoSelect');
+            const clipVideoPicker = document.getElementById('clipVideoPicker');
+            const clipStartInput = document.getElementById('clipStartInput');
+            const clipEndInput = document.getElementById('clipEndInput');
+            const clipTitleInput = document.getElementById('clipTitleInput');
+            const clipPreviewBtn = document.getElementById('clipPreviewBtn');
+            const clipSubmitBtn = document.getElementById('clipSubmitBtn');
+            const linkBankForm = document.getElementById('linkBankForm');
+            const linkBankEditId = document.getElementById('linkBankEditId');
+            const linkBankLabel = document.getElementById('linkBankLabel');
+            const linkBankUrl = document.getElementById('linkBankUrl');
+            const linkBankSubmitBtn = document.getElementById('linkBankSubmitBtn');
+            const linkBankCancelBtn = document.getElementById('linkBankCancelBtn');
+            const bulkLinkBankForm = document.getElementById('bulkLinkBankForm');
+            const bulkLinkBankText = document.getElementById('bulkLinkBankText');
+            const linkBankList = document.getElementById('linkBankList');
+            const linkBankEmpty = document.getElementById('linkBankEmpty');
+            const singleForm = document.getElementById('singleForm');
+            const folderForm = document.getElementById('folderForm');
+            const imageForm = document.getElementById('imageForm');
+            const singleSubmitBtn = document.getElementById('singleSubmitBtn');
+            const folderSubmitBtn = document.getElementById('folderSubmitBtn');
+            const imageSubmitBtn = document.getElementById('imageSubmitBtn');
+            const singleAutoFillBtn = document.getElementById('singleAutoFillBtn');
+            const singleClearLinksBtn = document.getElementById('singleClearLinksBtn');
+            const folderAutoFillBtn = document.getElementById('folderAutoFillBtn');
+            const folderClearLinksBtn = document.getElementById('folderClearLinksBtn');
+            const folderVideoFiles = document.getElementById('folderVideoFiles');
+            const singleSameDirectGroup = document.getElementById('singleSameDirectGroup');
+            const singleDifferentDirectGroup = document.getElementById('singleDifferentDirectGroup');
+            const inputClicks = document.getElementById('inputClicks');
+            const folderClicks = document.getElementById('folderClicks');
+            const sameAdGroup = document.getElementById('sameAdGroup');
+            const differentAdGroup = document.getElementById('differentAdGroup');
+            const videoTableBody = document.getElementById('videoTableBody');
+            const folderList = document.getElementById('folderList');
+            const imageList = document.getElementById('imageList');
+            const emptyState = document.getElementById('emptyState');
+            const folderEmptyState = document.getElementById('folderEmptyState');
+            const imageEmptyState = document.getElementById('imageEmptyState');
+            const statTotalVideo = document.getElementById('statTotalVideo');
+            const statTotalFolder = document.getElementById('statTotalFolder');
+            const statTotalViews = document.getElementById('statTotalViews');
+            const statTotalClicks = document.getElementById('statTotalClicks');
+            const viewPeriodStats = document.getElementById('viewPeriodStats');
+            const clickPeriodStats = document.getElementById('clickPeriodStats');
+            const analyticsSection = document.getElementById('analyticsSection');
+            const analyticsMeta = document.getElementById('analyticsMeta');
+            const hourlyChart = document.getElementById('hourlyChart');
+            const serverMobileToggle = document.getElementById('serverMobileToggle');
+            const serverDetailsBody = document.getElementById('serverDetailsBody');
+            const serverStatusMeta = document.getElementById('serverStatusMeta');
+            const cpuText = document.getElementById('cpuText');
+            const cpuBar = document.getElementById('cpuBar');
+            const cpuDetail = document.getElementById('cpuDetail');
+            const ramText = document.getElementById('ramText');
+            const ramBar = document.getElementById('ramBar');
+            const ramDetail = document.getElementById('ramDetail');
+            const storageText = document.getElementById('storageText');
+            const storageBar = document.getElementById('storageBar');
+            const storageDetail = document.getElementById('storageDetail');
+            const networkDown = document.getElementById('networkDown');
+            const networkUp = document.getElementById('networkUp');
+            const networkDetail = document.getElementById('networkDetail');
+            const telegramBackupMeta = document.getElementById('telegramBackupMeta');
+            const telegramBackupCards = document.getElementById('telegramBackupCards');
+            const backupMobileToggle = document.getElementById('backupMobileToggle');
+            const backupDetailsBody = document.getElementById('backupDetailsBody');
+            const backupAllBtn = document.getElementById('backupAllBtn');
+            const restoreAllBtn = document.getElementById('restoreAllBtn');
+            const folderDropdownBtn = document.getElementById('folderDropdownBtn');
+            const folderDropdownBody = document.getElementById('folderDropdownBody');
+            const folderDropdownIcon = document.getElementById('folderDropdownIcon');
+            const folderDropdownMeta = document.getElementById('folderDropdownMeta');
+            const imageDropdownBtn = document.getElementById('imageDropdownBtn');
+            const imageDropdownBody = document.getElementById('imageDropdownBody');
+            const imageDropdownIcon = document.getElementById('imageDropdownIcon');
+            const imageDropdownMeta = document.getElementById('imageDropdownMeta');
+            const imageSection = document.getElementById('imageSection');
+            const folderSection = document.getElementById('folderSection');
+            const videoSection = document.getElementById('videoSection');
+            const telegramBotMediaSection = document.getElementById('telegramBotMediaSection');
+            const telegramBotMeta = document.getElementById('telegramBotMeta');
+            const botVideoList = document.getElementById('botVideoList');
+            const botImageList = document.getElementById('botImageList');
+            const clipPreviewSection = document.getElementById('clipPreviewSection');
+            const clipPreviewVideo = document.getElementById('clipPreviewVideo');
+            const clipResultBox = document.getElementById('clipResultBox');
+            const clipDownloadLink = document.getElementById('clipDownloadLink');
+            const videoDropdownBtn = document.getElementById('videoDropdownBtn');
+            const videoDropdownBody = document.getElementById('videoDropdownBody');
+            const videoDropdownIcon = document.getElementById('videoDropdownIcon');
+            const videoDropdownMeta = document.getElementById('videoDropdownMeta');
+            const visitorSection = document.getElementById('visitorSection');
+            const visitorDockTop = document.getElementById('visitorDockTop');
+            const visitorDockBottom = document.getElementById('visitorDockBottom');
+            const visitorMap = document.getElementById('visitorMap');
+            const visitorTableBody = document.getElementById('visitorTableBody');
+            const visitorEmpty = document.getElementById('visitorEmpty');
+            const visitorFilterMeta = document.getElementById('visitorFilterMeta');
+            const visitorAdClicksBtn = document.getElementById('visitorAdClicksBtn');
+            const visitorPageViewsBtn = document.getElementById('visitorPageViewsBtn');
+
+            let token = sessionStorage.getItem(TOKEN_KEY) || '';
+            let videoList = [];
+            let folderItems = [];
+            let imageItems = [];
+            let linkBankItems = [];
+            let visitorItems = [];
+            let visitorFilter = 'ad_click';
+            let serverStatus = null;
+            let telegramBackupState = null;
+            let compressionState = null;
+            let telegramBotState = null;
+            let resizeTimer = null;
+            const currentAdminPage = window.location.pathname.startsWith('/admin/images')
+                ? 'images'
+                : (window.location.pathname.startsWith('/admin/links')
+                    ? 'links'
+                    : (window.location.pathname.startsWith('/admin/telegram-bot')
+                        ? 'telegram-bot'
+                        : (window.location.pathname.startsWith('/admin/clips') ? 'clips' : 'videos')));
+
+            function authHeaders() {
+                return { Authorization: `Bearer ${token}` };
+            }
+
+            async function api(path, options = {}) {
+                const response = await fetch(path, {
+                    ...options,
+                    headers: {
+                        ...(options.headers || {}),
+                        ...(token ? authHeaders() : {})
+                    }
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Request gagal.');
+                return data;
+            }
+
+            function showToast(message, isError = false) {
+                toast.classList.toggle('bg-green-600', !isError);
+                toast.classList.toggle('bg-red-600', isError);
+                toastMessage.innerText = message;
+                toast.classList.remove('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.classList.add('translate-x-full', 'opacity-0'), 2500);
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+            }
+
+            function formatNumber(num) {
+                return new Intl.NumberFormat('id-ID').format(num || 0);
+            }
+
+            function formatBytes(bytes) {
+                const value = Number(bytes || 0);
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let size = value;
+                let index = 0;
+                while (size >= 1024 && index < units.length - 1) {
+                    size /= 1024;
+                    index += 1;
+                }
+                return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+            }
+
+            function setNavActive() {
+                const base = 'block text-white text-sm font-medium px-4 py-3 lg:py-2 rounded-lg transition-colors w-full lg:w-auto text-center';
+                const inactive = `bg-neutral-800 hover:bg-neutral-700 ${base}`;
+                const active = `bg-blue-600 hover:bg-blue-700 ${base}`;
+                videoPageNav.className = currentAdminPage === 'videos' ? active : inactive;
+                imagePageNav.className = currentAdminPage === 'images' ? active : inactive;
+                linkPageNav.className = currentAdminPage === 'links' ? active : inactive;
+                botPageNav.className = currentAdminPage === 'telegram-bot' ? active : inactive;
+                clipPageNav.className = currentAdminPage === 'clips' ? active : inactive;
+            }
+
+            function applyAdminPage() {
+                const isVideoPage = currentAdminPage === 'videos';
+                const isImagePage = currentAdminPage === 'images';
+                const isLinkPage = currentAdminPage === 'links';
+                const isBotPage = currentAdminPage === 'telegram-bot';
+                const isClipPage = currentAdminPage === 'clips';
+                const isUtilityPage = isLinkPage || isBotPage || isClipPage;
+
+                statsSection.classList.toggle('hidden', !isVideoPage);
+                analyticsSection.classList.toggle('hidden', !isVideoPage);
+                serverSection.classList.toggle('hidden', !isVideoPage);
+                backupSection.classList.toggle('hidden', !isVideoPage);
+                compressionSection.classList.toggle('hidden', !isVideoPage);
+                rightPanel.classList.toggle('hidden', isLinkPage);
+                adminWorkspace.className = isUtilityPage && isLinkPage
+                    ? 'grid grid-cols-1 gap-8'
+                    : 'grid grid-cols-1 xl:grid-cols-3 gap-8';
+                leftPanel.className = `${isUtilityPage && isLinkPage ? 'xl:col-span-1 max-w-3xl' : 'xl:col-span-1'} bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-lg h-fit`;
+
+                linkBankSection.classList.toggle('hidden', !isLinkPage);
+                telegramBotSection.classList.toggle('hidden', !isBotPage);
+                clipToolSection.classList.toggle('hidden', !isClipPage);
+                uploadTabs.className = isVideoPage
+                    ? 'grid grid-cols-2 bg-neutral-950 border border-neutral-800 p-1 rounded-lg mb-6'
+                    : 'hidden grid grid-cols-2 bg-neutral-950 border border-neutral-800 p-1 rounded-lg mb-6';
+                singleForm.classList.toggle('hidden', !isVideoPage);
+                folderForm.classList.toggle('hidden', true);
+                imageForm.classList.toggle('hidden', !isImagePage);
+                imageTabBtn.classList.add('hidden');
+
+                imageSection.classList.toggle('hidden', !isImagePage);
+                telegramBotMediaSection.classList.toggle('hidden', !isBotPage);
+                clipPreviewSection.classList.toggle('hidden', !isClipPage);
+                folderSection.classList.toggle('hidden', !isVideoPage);
+                videoSection.classList.toggle('hidden', !isVideoPage);
+                visitorSection.classList.toggle('hidden', !isVideoPage);
+
+                if (isImagePage) {
+                    imageDropdownBody.classList.remove('hidden');
+                    imageDropdownIcon.innerText = '-';
+                }
+
+                if (isVideoPage) {
+                    setUploadMode('single');
+                }
+
+                setNavActive();
+                repositionVisitorSection();
+            }
+
+            function folderTitleById(id) {
+                return folderItems.find(folder => folder.id === id)?.title || '-';
+            }
+
+            function randomBankUrl() {
+                if (!linkBankItems.length) return '';
+                return linkBankItems[Math.floor(Math.random() * linkBankItems.length)].url;
+            }
+
+            function startOfPeriod(period, sourceDate = new Date()) {
+                const date = new Date(sourceDate);
+                if (period === 'day') {
+                    date.setHours(0, 0, 0, 0);
+                    return date;
+                }
+                if (period === 'week') {
+                    date.setHours(0, 0, 0, 0);
+                    const day = date.getDay() || 7;
+                    date.setDate(date.getDate() - day + 1);
+                    return date;
+                }
+                if (period === 'month') {
+                    date.setDate(1);
+                    date.setHours(0, 0, 0, 0);
+                    return date;
+                }
+                date.setMonth(0, 1);
+                date.setHours(0, 0, 0, 0);
+                return date;
+            }
+
+            function countVisitorEvents(type, period) {
+                const start = startOfPeriod(period).getTime();
+                return visitorItems.filter(visitor => visitor.type === type && new Date(visitor.createdAt).getTime() >= start).length;
+            }
+
+            function renderPeriodStats(container, type) {
+                const labels = [
+                    ['day', 'Hari ini'],
+                    ['week', 'Minggu ini'],
+                    ['month', 'Bulan ini'],
+                    ['year', 'Tahun ini']
+                ];
+                container.innerHTML = labels.map(([period, label]) => `
+                    <div class="bg-neutral-950/70 border border-neutral-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                        <p class="truncate">${label}</p>
+                        <p class="text-white text-sm sm:text-base font-semibold mt-0.5 sm:mt-1">${formatNumber(countVisitorEvents(type, period))}</p>
+                    </div>
+                `).join('');
+            }
+
+            function renderHourlyChart() {
+                const hours = Array.from({ length: 24 }, (_, hour) => ({
+                    hour,
+                    views: 0,
+                    clicks: 0
+                }));
+                const todayStart = startOfPeriod('day').getTime();
+
+                visitorItems.forEach(visitor => {
+                    const createdAt = new Date(visitor.createdAt);
+                    if (Number.isNaN(createdAt.getTime()) || createdAt.getTime() < todayStart) return;
+                    const bucket = hours[createdAt.getHours()];
+                    if (visitor.type === 'video_view') bucket.views += 1;
+                    if (visitor.type === 'ad_click') bucket.clicks += 1;
+                });
+
+                const maxValue = Math.max(1, ...hours.flatMap(item => [item.views, item.clicks]));
+                hourlyChart.innerHTML = '';
+                const isCompact = window.innerWidth < 640;
+                const chartHeight = isCompact ? 118 : 190;
+                const barWrapClass = isCompact ? 'h-[128px]' : 'h-[210px]';
+                hours.forEach(item => {
+                    const column = document.createElement('div');
+                    column.className = 'min-w-[28px] sm:min-w-[34px] flex-1 h-full flex flex-col items-center justify-end gap-1.5 sm:gap-2';
+                    const viewHeight = Math.max(5, (item.views / maxValue) * chartHeight);
+                    const clickHeight = Math.max(5, (item.clicks / maxValue) * chartHeight);
+                    column.innerHTML = `
+                        <div class="w-full ${barWrapClass} flex items-end justify-center gap-1">
+                            <div title="${item.hour}:00 tayangan ${item.views}" class="w-2.5 sm:w-3 rounded-t bg-blue-500 shadow-[0_0_16px_rgba(59,130,246,.35)]" style="height:${viewHeight}px"></div>
+                            <div title="${item.hour}:00 klik ${item.clicks}" class="w-2.5 sm:w-3 rounded-t bg-purple-500 shadow-[0_0_16px_rgba(168,85,247,.35)]" style="height:${clickHeight}px"></div>
+                        </div>
+                        <span class="text-[10px] text-neutral-500">${String(item.hour).padStart(2, '0')}</span>
+                    `;
+                    hourlyChart.appendChild(column);
+                });
+                analyticsMeta.innerText = `${formatNumber(countVisitorEvents('video_view', 'day'))} tayangan dan ${formatNumber(countVisitorEvents('ad_click', 'day'))} klik iklan hari ini`;
+            }
+
+            function renderStats() {
+                statTotalVideo.innerText = formatNumber(videoList.length);
+                statTotalFolder.innerText = formatNumber(folderItems.length);
+                statTotalViews.innerText = formatNumber(videoList.reduce((sum, video) => sum + Number(video.views || 0), 0));
+                statTotalClicks.innerText = formatNumber(videoList.reduce((sum, video) => sum + Number(video.clicks || 0), 0));
+                renderPeriodStats(viewPeriodStats, 'video_view');
+                renderPeriodStats(clickPeriodStats, 'ad_click');
+                renderHourlyChart();
+                folderDropdownMeta.innerText = `${formatNumber(folderItems.length)} folder`;
+                videoDropdownMeta.innerText = `${formatNumber(videoList.length)} video`;
+                imageDropdownMeta.innerText = `${formatNumber(imageItems.length)} image`;
+            }
+
+            function renderServerStatus() {
+                if (!serverStatus) return;
+                const cpuPercent = serverStatus.cpu?.percent || 0;
+                const ramPercent = serverStatus.memory?.percent || 0;
+                const storagePercent = serverStatus.storage?.percent || 0;
+
+                cpuText.innerText = `${cpuPercent}%`;
+                cpuBar.style.width = `${cpuPercent}%`;
+                cpuDetail.innerText = `${serverStatus.cpu?.cores || 0} core - load ${Number(serverStatus.cpu?.load1 || 0).toFixed(2)}`;
+
+                ramText.innerText = `${ramPercent}%`;
+                ramBar.style.width = `${ramPercent}%`;
+                ramDetail.innerText = `${formatBytes(serverStatus.memory?.used)} / ${formatBytes(serverStatus.memory?.total)}`;
+
+                storageText.innerText = serverStatus.storage ? `${storagePercent}%` : '-';
+                storageBar.style.width = `${storagePercent}%`;
+                storageDetail.innerText = serverStatus.storage
+                    ? `${formatBytes(serverStatus.storage.used)} / ${formatBytes(serverStatus.storage.total)} (${serverStatus.storage.mount})`
+                    : 'Storage tidak terbaca';
+
+                networkDown.innerText = `${formatBytes(serverStatus.network?.rxPerSecond)}/s`;
+                networkUp.innerText = `${formatBytes(serverStatus.network?.txPerSecond)}/s`;
+                networkDetail.innerText = `Total: ${formatBytes(serverStatus.network?.rx)} down / ${formatBytes(serverStatus.network?.tx)} up`;
+                serverStatusMeta.innerText = `${serverStatus.hostname || '-'} - uptime ${Math.floor((serverStatus.uptime || 0) / 3600)} jam`;
+            }
+
+            function formatSecondsHuman(value) {
+                const total = Math.max(0, Math.round(Number(value || 0)));
+                const minutes = Math.floor(total / 60);
+                const seconds = total % 60;
+                return `${minutes}:${String(seconds).padStart(2, '0')}`;
+            }
+
+            function compressionStatusLabel(status) {
+                const labels = {
+                    queued: 'Antri',
+                    compressing: 'Sedang dikompres',
+                    done: 'Selesai',
+                    skipped: 'Dilewati',
+                    failed: 'Gagal'
+                };
+                return labels[status] || status || '-';
+            }
+
+            function renderCompression() {
+                if (!compressionState) {
+                    compressionMeta.innerText = 'Memuat status kompresi...';
+                    return;
+                }
+
+                const cpuLine = `CPU ${compressionState.cpuPercent || 50}% (${compressionState.threads || 1} thread)`;
+                const thresholdLine = `Ambang ${formatBytes(compressionState.thresholdBytes || 0)}`;
+                const queueCount = (compressionState.queue || []).length;
+                const activeLine = compressionState.current
+                    ? `Aktif: ${compressionState.current.title || compressionState.current.id}`
+                    : (queueCount ? `${queueCount} job menunggu` : 'Tidak ada job aktif');
+                compressionMeta.innerText = `${cpuLine} - ${thresholdLine} - ${activeLine}`;
+
+                const current = compressionState.current;
+                if (current) {
+                    compressionCurrentTitle.innerText = current.title || current.id;
+                    const processed = formatSecondsHuman(current.processedSeconds);
+                    const duration = current.durationSeconds ? formatSecondsHuman(current.durationSeconds) : '?';
+                    const percent = Number(current.progress || 0);
+                    compressionCurrentBar.style.width = `${percent}%`;
+                    compressionCurrentTime.innerText = `${processed} / ${duration}`;
+                    compressionCurrentPercent.innerText = `${percent}%`;
+                    const sizeLabel = current.originalSize ? formatBytes(current.originalSize) : '';
+                    const elapsed = current.startedAt ? Math.floor((Date.now() - current.startedAt) / 1000) : 0;
+                    compressionCurrentDetail.innerText = `${sizeLabel ? sizeLabel + ' - ' : ''}berjalan ${formatSecondsHuman(elapsed)}`;
+                } else {
+                    compressionCurrentTitle.innerText = '-';
+                    compressionCurrentDetail.innerText = 'Tidak ada job aktif';
+                    compressionCurrentBar.style.width = '0%';
+                    compressionCurrentTime.innerText = '0:00 / 0:00';
+                    compressionCurrentPercent.innerText = '0%';
+                }
+
+                const queue = compressionState.queue || [];
+                compressionQueueCount.innerText = queue.length;
+                compressionQueueList.innerHTML = '';
+                compressionQueueEmpty.classList.toggle('hidden', queue.length > 0);
+                queue.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-2 text-xs text-neutral-300 bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5';
+                    row.innerHTML = `
+                        <span class="truncate flex-1">${escapeHtml(item.title || item.id)}</span>
+                        <span class="text-[10px] text-neutral-500 shrink-0">${item.force ? 'paksa' : 'auto'}</span>
+                    `;
+                    compressionQueueList.appendChild(row);
+                });
+
+                const history = compressionState.history || [];
+                compressionHistoryList.innerHTML = '';
+                compressionHistoryEmpty.classList.toggle('hidden', history.length > 0);
+                history.forEach(item => {
+                    const row = document.createElement('div');
+                    const colorClass = item.status === 'done'
+                        ? 'border-emerald-500/30 text-emerald-300'
+                        : (item.status === 'failed'
+                            ? 'border-red-500/30 text-red-300'
+                            : 'border-neutral-700 text-neutral-300');
+                    row.className = `flex items-start justify-between gap-2 text-xs bg-neutral-900 border ${colorClass} rounded-lg px-2.5 py-1.5`;
+                    let detail = compressionStatusLabel(item.status);
+                    if (item.status === 'done' && item.originalSize && item.compressedSize) {
+                        const saved = Math.max(0, Math.round((1 - item.compressedSize / item.originalSize) * 100));
+                        detail = `${formatBytes(item.originalSize)} -> ${formatBytes(item.compressedSize)} (-${saved}%)`;
+                    } else if (item.status === 'failed' && item.error) {
+                        detail = item.error;
+                    } else if (item.status === 'skipped') {
+                        detail = item.reason === 'no_savings' ? 'Hemat di bawah minimum' : compressionStatusLabel(item.status);
+                    }
+                    row.innerHTML = `
+                        <span class="truncate flex-1">${escapeHtml(item.title || item.id)}</span>
+                        <span class="text-[10px] shrink-0 text-right max-w-[55%] truncate" title="${escapeHtml(detail)}">${escapeHtml(detail)}</span>
+                    `;
+                    compressionHistoryList.appendChild(row);
+                });
+            }
+
+            function renderTelegramBackup() {
+                const telegram = telegramBackupState?.telegram || {};
+                const backups = telegramBackupState?.backups || { videos: {}, folders: {} };
+                const videoRecords = Object.values(backups.videos || {});
+                const backedUp = videoRecords.filter(record => record.status === 'backed_up').length;
+                const failed = videoRecords.filter(record => record.status === 'failed').length;
+                const pending = videoRecords.filter(record => ['queued', 'uploading', 'config_missing'].includes(record.status)).length;
+
+                telegramBackupMeta.innerText = telegram.configured
+                    ? `Telegram siap - chat ${telegram.backupChat || '-'}`
+                    : 'Telegram belum dikonfigurasi lengkap';
+
+                telegramBackupCards.innerHTML = `
+                    <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                        <p class="text-xs sm:text-sm text-neutral-400">Status</p>
+                        <p class="text-xl sm:text-2xl font-semibold ${telegram.configured ? 'text-green-400' : 'text-yellow-400'} mt-1 sm:mt-2">${telegram.configured ? 'Siap' : 'Belum Siap'}</p>
+                        <p class="text-[11px] sm:text-xs text-neutral-500 mt-1 sm:mt-2 truncate">${telegram.gramJsInstalled ? 'GramJS terpasang' : 'Jalankan npm install'}</p>
+                    </div>
+                    <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                        <p class="text-xs sm:text-sm text-neutral-400">Berhasil Backup</p>
+                        <p class="text-xl sm:text-2xl font-semibold text-white mt-1 sm:mt-2">${formatNumber(backedUp)}</p>
+                    </div>
+                    <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                        <p class="text-xs sm:text-sm text-neutral-400">Pending/Upload</p>
+                        <p class="text-xl sm:text-2xl font-semibold text-white mt-1 sm:mt-2">${formatNumber(pending)}</p>
+                    </div>
+                    <div class="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+                        <p class="text-xs sm:text-sm text-neutral-400">Gagal</p>
+                        <p class="text-xl sm:text-2xl font-semibold text-white mt-1 sm:mt-2">${formatNumber(failed)}</p>
+                    </div>
+                `;
+            }
+
+            function getVideoBackupRecord(video) {
+                const records = telegramBackupState?.backups?.videos || {};
+                if (records[video.id]) return records[video.id];
+                return Object.values(records).find(record => {
+                    const snapshot = record.videoSnapshot || {};
+                    return snapshot.id === video.id
+                        || snapshot.shortCode === video.shortCode
+                        || snapshot.videoUrl === video.videoUrl;
+                }) || null;
+            }
+
+            function renderFolders() {
+                folderList.innerHTML = '';
+                folderEmptyState.classList.toggle('hidden', folderItems.length > 0);
+
+                folderItems.forEach(folder => {
+                    const folderUrl = `${window.location.origin}/f/${encodeURIComponent(folder.shortCode || folder.id)}`;
+                    const row = document.createElement('div');
+                    row.className = 'bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between';
+                    row.dataset.id = folder.id;
+                    row.dataset.url = folderUrl;
+                    row.innerHTML = `
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="${folder.isEnabled !== false ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'} inline-flex py-1 px-2.5 rounded-md text-xs font-medium border">${folder.isEnabled !== false ? 'Folder ON' : 'Folder OFF'}</span>
+                                <p class="text-neutral-100 font-medium">${escapeHtml(folder.title)}</p>
+                            </div>
+                            <p class="text-xs text-neutral-500 mt-1">${formatNumber(folder.videoCount)} video - ${formatNumber(folder.views)} views - ${formatNumber(folder.clicks)} klik</p>
+                            <a href="${folderUrl}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">${folderUrl}</a>
+                        </div>
+                        <div class="flex gap-2">
+                            <button data-folder-action="copy" class="text-xs bg-neutral-700/60 hover:bg-neutral-700 text-neutral-200 px-3 py-1.5 rounded">Salin</button>
+                            ${folder.isEnabled !== false
+                                ? '<button data-folder-action="disable" class="text-xs bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded">Matikan</button>'
+                                : '<button data-folder-action="enable" class="text-xs bg-green-500/10 text-green-400 hover:bg-green-500/20 px-3 py-1.5 rounded">Nyalakan</button>'}
+                            <button data-folder-action="delete" class="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded">Hapus</button>
+                        </div>
+                    `;
+                    folderList.appendChild(row);
+                });
+            }
+
+            function renderImages() {
+                imageList.innerHTML = '';
+                imageEmptyState.classList.toggle('hidden', imageItems.length > 0);
+
+                imageItems.forEach(image => {
+                    const imageUrl = `${window.location.origin}${image.imageUrl}`;
+                    const card = document.createElement('div');
+                    card.className = 'bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden';
+                    card.dataset.id = image.id;
+                    card.dataset.url = imageUrl;
+                    card.innerHTML = `
+                        <a href="${imageUrl}" target="_blank" class="block bg-neutral-900 aspect-video overflow-hidden">
+                            <img src="${image.imageUrl}" alt="${escapeHtml(image.title)}" class="w-full h-full object-cover">
+                        </a>
+                        <div class="p-4 space-y-3">
+                            <div>
+                                <p class="text-neutral-100 font-medium truncate">${escapeHtml(image.title)}</p>
+                                <p class="text-xs text-neutral-500">${escapeHtml(image.mimeType)} - ${formatBytes(image.size)}</p>
+                            </div>
+                            <a href="${imageUrl}" target="_blank" class="block text-xs text-blue-400 hover:text-blue-300 truncate">${imageUrl}</a>
+                            <div class="flex gap-2">
+                                <button data-image-action="copy" class="text-xs bg-neutral-700/60 hover:bg-neutral-700 text-neutral-200 px-3 py-1.5 rounded">Salin</button>
+                                <button data-image-action="delete" class="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded">Hapus</button>
+                            </div>
+                        </div>
+                    `;
+                    imageList.appendChild(card);
+                });
+            }
+
+            function renderTelegramBotConfig() {
+                const bot = telegramBotState?.bot || {};
+                botTokenPreview.innerText = bot.hasToken
+                    ? `Token tersimpan: ${bot.tokenPreview}`
+                    : 'Belum disetting.';
+                botChatIdInput.value = bot.chatId || '';
+                telegramBotMeta.innerText = bot.configured
+                    ? `Bot siap kirim ke ${bot.chatId}`
+                    : 'Token bot dan chat ID belum lengkap.';
+            }
+
+            function renderTelegramBotMedia() {
+                botVideoList.innerHTML = '';
+                botImageList.innerHTML = '';
+
+                if (!videoList.length) {
+                    botVideoList.innerHTML = '<p class="text-sm text-neutral-500">Belum ada video.</p>';
+                }
+                if (!imageItems.length) {
+                    botImageList.innerHTML = '<p class="text-sm text-neutral-500">Belum ada foto.</p>';
+                }
+
+                videoList.forEach(video => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-3 bg-neutral-950 border border-neutral-800 rounded-lg p-3 cursor-pointer hover:border-neutral-700';
+                    label.innerHTML = `
+                        <input type="checkbox" data-bot-video value="${video.id}" class="w-4 h-4">
+                        <span class="min-w-0">
+                            <span class="block text-sm text-neutral-100 truncate">${escapeHtml(video.title)}</span>
+                            <span class="block text-xs text-neutral-500 truncate">${escapeHtml(video.videoUrl)}</span>
+                        </span>
+                    `;
+                    botVideoList.appendChild(label);
+                });
+
+                imageItems.forEach(image => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-3 bg-neutral-950 border border-neutral-800 rounded-lg p-3 cursor-pointer hover:border-neutral-700';
+                    label.innerHTML = `
+                        <input type="checkbox" data-bot-image value="${image.id}" class="w-4 h-4">
+                        <img src="${image.imageUrl}" alt="" class="w-12 h-12 rounded object-cover bg-black">
+                        <span class="min-w-0">
+                            <span class="block text-sm text-neutral-100 truncate">${escapeHtml(image.title)}</span>
+                            <span class="block text-xs text-neutral-500 truncate">${escapeHtml(image.imageUrl)}</span>
+                        </span>
+                    `;
+                    botImageList.appendChild(label);
+                });
+            }
+
+            function renderClipOptions() {
+                clipVideoSelect.innerHTML = '';
+                clipVideoPicker.innerHTML = '';
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = 'Pilih video dari daftar thumbnail';
+                clipVideoSelect.appendChild(emptyOption);
+                videoList.forEach((video, index) => {
+                    const option = document.createElement('option');
+                    option.value = video.id;
+                    option.textContent = video.title;
+                    option.dataset.url = video.videoUrl;
+                    clipVideoSelect.appendChild(option);
+
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.dataset.clipVideoId = video.id;
+                    card.className = `w-full text-left rounded-xl border ${index === 0 ? 'border-blue-500 bg-blue-500/10' : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700'} overflow-hidden`;
+                    card.innerHTML = `
+                        <div class="grid grid-cols-[112px_1fr] gap-3 p-3 items-center">
+                            <div class="aspect-video rounded-lg overflow-hidden bg-black">
+                                <img src="/thumbs/${encodeURIComponent(video.shortCode || video.id)}.jpg" loading="lazy" alt="" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('grid','place-items-center'); this.parentElement.innerHTML='<span class=&quot;text-[10px] text-neutral-500&quot;>NO THUMB</span>';">
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-neutral-100 truncate">${escapeHtml(video.title)}</p>
+                                <p class="text-xs text-neutral-500 truncate">${escapeHtml(video.videoUrl)}</p>
+                                <p class="text-xs text-neutral-600 mt-1">Terbaru #${index + 1}</p>
+                            </div>
+                        </div>
+                    `;
+                    clipVideoPicker.appendChild(card);
+                });
+                clipVideoSelect.value = '';
+                updateClipPreviewSource();
+            }
+
+            function updateClipPickerSelection() {
+                clipVideoPicker.querySelectorAll('[data-clip-video-id]').forEach(card => {
+                    const active = card.dataset.clipVideoId === clipVideoSelect.value;
+                    card.classList.toggle('border-blue-500', active);
+                    card.classList.toggle('bg-blue-500/10', active);
+                    card.classList.toggle('border-neutral-800', !active);
+                    card.classList.toggle('bg-neutral-900', !active);
+                });
+            }
+
+            function selectedClipVideo() {
+                return videoList.find(video => video.id === clipVideoSelect.value) || null;
+            }
+
+            function updateClipPreviewSource() {
+                const video = selectedClipVideo();
+                if (video) {
+                    clipPreviewVideo.src = video.videoUrl;
+                } else {
+                    clipPreviewVideo.removeAttribute('src');
+                    clipPreviewVideo.load();
+                }
+                clipResultBox.classList.add('hidden');
+                updateClipPickerSelection();
+            }
+
+            function playClipPreview() {
+                const start = Math.max(0, Number(clipStartInput.value || 0));
+                const end = Number(clipEndInput.value || 0);
+                if (!clipPreviewVideo.src || end <= start) {
+                    showToast('Range preview tidak valid.', true);
+                    return;
+                }
+                clipPreviewVideo.currentTime = start;
+                clipPreviewVideo.play().catch(() => {});
+            }
+
+            function renderLinkBank() {
+                linkBankList.innerHTML = '';
+                linkBankEmpty.classList.toggle('hidden', linkBankItems.length > 0);
+
+                linkBankItems.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'bg-neutral-950 border border-neutral-800 rounded-lg p-3';
+                    row.dataset.id = item.id;
+                    row.innerHTML = `
+                        <p class="text-sm font-medium text-neutral-200 truncate">${escapeHtml(item.label || 'Tanpa catatan')}</p>
+                        <p class="text-xs text-neutral-500 truncate mt-1">${escapeHtml(item.url)}</p>
+                        <div class="flex gap-2 mt-3">
+                            <button data-link-action="use" class="text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-2.5 py-1.5 rounded">Pakai</button>
+                            <button data-link-action="edit" class="text-xs bg-neutral-700/60 hover:bg-neutral-700 text-neutral-200 px-2.5 py-1.5 rounded">Edit</button>
+                            <button data-link-action="delete" class="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-2.5 py-1.5 rounded">Hapus</button>
+                        </div>
+                    `;
+                    linkBankList.appendChild(row);
+                });
+            }
+
+            function renderVisitors() {
+                visitorTableBody.innerHTML = '';
+                const filteredVisitors = visitorItems.filter(visitor => {
+                    if (visitorFilter === 'ad_click') return visitor.type === 'ad_click';
+                    return visitor.type !== 'ad_click';
+                });
+                const activeClass = 'px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white';
+                const inactiveClass = 'px-3 py-2 text-sm font-medium rounded-md text-neutral-400 hover:text-white';
+                visitorAdClicksBtn.className = visitorFilter === 'ad_click' ? activeClass : inactiveClass;
+                visitorPageViewsBtn.className = visitorFilter === 'page_view' ? activeClass : inactiveClass;
+                visitorFilterMeta.innerText = visitorFilter === 'ad_click'
+                    ? `${formatNumber(filteredVisitors.length)} pengklik iklan tercatat.`
+                    : `${formatNumber(filteredVisitors.length)} visitor web tercatat.`;
+                visitorEmpty.classList.toggle('hidden', filteredVisitors.length > 0);
+
+                visitorMap.querySelectorAll('[data-visitor-dot]').forEach(dot => dot.remove());
+                const plotted = new Set();
+
+                filteredVisitors.forEach(visitor => {
+                    const geo = visitor.geo || {};
+                    const location = [geo.city, geo.region, geo.country].filter(Boolean).join(', ') || '-';
+                    const typeLabel = visitor.type === 'ad_click' ? 'Klik iklan' : (visitor.type === 'pic' ? 'Galeri foto' : (visitor.type === 'folder' ? 'Folder' : 'Video'));
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="py-3 px-2 text-neutral-300">${escapeHtml(new Date(visitor.createdAt).toLocaleString('id-ID'))}</td>
+                        <td class="py-3 px-2 text-neutral-300">${escapeHtml(visitor.ip)}</td>
+                        <td class="py-3 px-2 text-neutral-300">${escapeHtml(location)}</td>
+                        <td class="py-3 px-2 text-neutral-300">${escapeHtml(geo.isp || geo.org || '-')}</td>
+                        <td class="py-3 px-2 text-neutral-300">${escapeHtml(typeLabel)}: ${escapeHtml(visitor.targetTitle || '-')}</td>
+                    `;
+                    visitorTableBody.appendChild(row);
+
+                    if (typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+                        const key = `${geo.lat},${geo.lon}`;
+                        if (plotted.has(key)) return;
+                        plotted.add(key);
+                        const left = ((geo.lon + 180) / 360) * 100;
+                        const top = ((90 - geo.lat) / 180) * 100;
+                        const dot = document.createElement('div');
+                        dot.dataset.visitorDot = 'true';
+                        dot.title = `${visitor.ip} - ${location}`;
+                        dot.className = 'absolute w-3 h-3 bg-blue-400 rounded-full ring-4 ring-blue-400/20';
+                        dot.style.left = `${Math.min(98, Math.max(1, left))}%`;
+                        dot.style.top = `${Math.min(96, Math.max(4, top))}%`;
+                        visitorMap.appendChild(dot);
+                    }
+                });
+            }
+
+            function compressionBadge(video) {
+                const status = video.compressionStatus || 'idle';
+                const labels = {
+                    idle: ['Belum dicek', 'bg-neutral-800 text-neutral-400 border-neutral-700'],
+                    queued: ['Antri', 'bg-blue-500/10 text-blue-400 border-blue-500/20'],
+                    compressing: ['Kompres...', 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'],
+                    done: ['Terkompres', 'bg-green-500/10 text-green-400 border-green-500/20'],
+                    skipped: ['Lewati', 'bg-neutral-800 text-neutral-300 border-neutral-700'],
+                    failed: ['Gagal', 'bg-red-500/10 text-red-400 border-red-500/20']
+                };
+                const [label, classes] = labels[status] || labels.idle;
+                let detail = '';
+                if (status === 'done' && video.originalSize && video.compressedSize) {
+                    const saved = Math.max(0, Math.round((1 - video.compressedSize / video.originalSize) * 100));
+                    detail = `${formatBytes(video.originalSize)} -> ${formatBytes(video.compressedSize)} (-${saved}%)`;
+                } else if (status === 'skipped') {
+                    if (video.compressionReason === 'under_threshold') {
+                        detail = video.originalSize ? `${formatBytes(video.originalSize)} (di bawah ambang)` : 'Di bawah ambang';
+                    } else if (video.compressionReason === 'no_savings') {
+                        detail = 'Hemat kurang dari minimum';
+                    }
+                } else if (status === 'failed' && video.compressionError) {
+                    detail = video.compressionError;
+                } else if (video.originalSize) {
+                    detail = formatBytes(video.originalSize);
+                }
+                return `
+                    <span class="inline-flex py-1 px-2.5 rounded-md text-xs font-medium border ${classes}">${escapeHtml(label)}</span>
+                    ${detail ? `<p class="text-[11px] text-neutral-500 max-w-[220px] truncate mt-1">${escapeHtml(detail)}</p>` : ''}
+                `;
+            }
+
+            function renderVideos() {
+                videoTableBody.innerHTML = '';
+                emptyState.classList.toggle('hidden', videoList.length > 0);
+
+                videoList.forEach(video => {
+                    const watchUrl = `${window.location.origin}/v/${encodeURIComponent(video.shortCode || video.id)}`;
+                    const backupRecord = getVideoBackupRecord(video);
+                    const backupStatus = backupRecord?.status || 'belum';
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-neutral-800/20 transition-colors';
+                    row.dataset.id = video.id;
+                    row.dataset.watchUrl = watchUrl;
+                    row.innerHTML = `
+                        <td class="py-4 px-2">${video.isEnabled !== false
+                            ? '<span class="inline-flex py-1 px-2.5 rounded-md text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">ON</span>'
+                            : '<span class="inline-flex py-1 px-2.5 rounded-md text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">OFF</span>'}</td>
+                        <td class="py-4 px-2"><p class="text-neutral-200 font-medium">${escapeHtml(video.title)}</p><p class="text-xs text-neutral-500 max-w-[220px] truncate">${escapeHtml(video.adUrl)}</p></td>
+                        <td class="py-4 px-2 text-neutral-300">${escapeHtml(folderTitleById(video.folderId))}</td>
+                        <td class="py-4 px-2 text-neutral-300">${formatNumber(video.views)}</td>
+                        <td class="py-4 px-2 text-neutral-300">${formatNumber(video.clicks)}</td>
+                        <td class="py-4 px-2"><a href="${watchUrl}" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">${watchUrl}</a></td>
+                        <td class="py-4 px-2 text-neutral-300">${escapeHtml(backupStatus)}</td>
+                        <td class="py-4 px-2 text-neutral-300">${compressionBadge(video)}</td>
+                        <td class="py-4 px-2 text-right">
+                            <button data-action="copy" class="text-xs bg-neutral-700/60 hover:bg-neutral-700 text-neutral-200 px-3 py-1.5 rounded mr-2">Salin</button>
+                            <button data-action="compress" class="text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 px-3 py-1.5 rounded mr-2">Kompres</button>
+                            <button data-action="backup" class="text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-3 py-1.5 rounded mr-2">Backup</button>
+                            <button data-action="restore" class="text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 px-3 py-1.5 rounded mr-2">Restore</button>
+                            ${video.isEnabled !== false
+                                ? '<button data-action="disable" class="text-xs bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 px-3 py-1.5 rounded mr-2">Matikan</button>'
+                                : '<button data-action="enable" class="text-xs bg-green-500/10 text-green-400 hover:bg-green-500/20 px-3 py-1.5 rounded mr-2">Nyalakan</button>'}
+                            <button data-action="delete" class="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded">Hapus</button>
+                        </td>
+                    `;
+                    videoTableBody.appendChild(row);
+                });
+            }
+
+            function renderAll() {
+                renderStats();
+                renderServerStatus();
+                renderTelegramBackup();
+                renderCompression();
+                renderLinkBank();
+                renderImages();
+                renderTelegramBotConfig();
+                renderTelegramBotMedia();
+                renderClipOptions();
+                renderFolders();
+                renderVideos();
+                renderVisitors();
+                applyAdminPage();
+            }
+
+            async function loadData() {
+                const [videosData, foldersData, imagesData, linkBankData, visitorData, serverData, backupData, botData, compressionData] = await Promise.all([
+                    api('/api/admin/videos'),
+                    api('/api/admin/folders'),
+                    api('/api/admin/images'),
+                    api('/api/admin/link-bank'),
+                    api('/api/admin/visitors'),
+                    api('/api/admin/server-status'),
+                    api('/api/admin/telegram-backups'),
+                    api('/api/admin/telegram-bot'),
+                    api('/api/admin/compression-queue').catch(() => ({ compression: null }))
+                ]);
+                videoList = videosData.videos || [];
+                folderItems = foldersData.folders || [];
+                imageItems = imagesData.images || [];
+                linkBankItems = linkBankData.links || [];
+                visitorItems = visitorData.visitors || [];
+                serverStatus = serverData.status || null;
+                telegramBackupState = backupData || null;
+                telegramBotState = botData || null;
+                compressionState = (compressionData && compressionData.compression) || null;
+                renderAll();
+            }
+
+            async function refreshServerStatus() {
+                if (!token) return;
+                try {
+                    const [statusData, compressionData] = await Promise.all([
+                        api('/api/admin/server-status'),
+                        api('/api/admin/compression-queue').catch(() => ({ compression: null }))
+                    ]);
+                    serverStatus = statusData.status || null;
+                    if (compressionData && compressionData.compression) {
+                        compressionState = compressionData.compression;
+                        renderCompression();
+                    }
+                    renderServerStatus();
+                } catch {
+                    serverStatusMeta.innerText = 'Status server gagal dimuat';
+                }
+            }
+
+            function toggleDropdown(body, icon) {
+                const hidden = body.classList.toggle('hidden');
+                icon.innerText = hidden ? '+' : '-';
+                repositionVisitorSection();
+            }
+
+            function repositionVisitorSection() {
+                const anyDropdownOpen = !imageDropdownBody.classList.contains('hidden') || !folderDropdownBody.classList.contains('hidden') || !videoDropdownBody.classList.contains('hidden');
+                const targetDock = anyDropdownOpen ? visitorDockBottom : visitorDockTop;
+                if (visitorSection.parentElement !== targetDock) {
+                    targetDock.appendChild(visitorSection);
+                }
+            }
+
+            function setUploadMode(mode) {
+                const isSingle = mode === 'single';
+                const isFolder = mode === 'folder';
+                const isImage = mode === 'image';
+                singleForm.classList.toggle('hidden', !isSingle);
+                folderForm.classList.toggle('hidden', !isFolder);
+                imageForm.classList.toggle('hidden', !isImage);
+                singleTabBtn.className = `px-3 py-2 text-sm font-medium rounded-md ${isSingle ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`;
+                folderTabBtn.className = `px-3 py-2 text-sm font-medium rounded-md ${isFolder ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`;
+                imageTabBtn.className = `px-3 py-2 text-sm font-medium rounded-md ${isImage ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`;
+                imageTabBtn.classList.toggle('hidden', currentAdminPage !== 'images');
+            }
+
+            function readBlobAsDataUrl(blob) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(reader.error);
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
+                const chunkSize = 6 * 1024 * 1024;
+                const totalChunks = Math.ceil(file.size / chunkSize);
+                const start = await api('/api/admin/uploads/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, uploadType })
+                });
+
+                for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                    const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
+                    const dataUrl = await readBlobAsDataUrl(chunk);
+                    progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
+                    await api(`/api/admin/uploads/${start.uploadId}/chunk`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chunkIndex, dataUrl })
+                    });
+                }
+                return start.uploadId;
+            }
+
+            async function uploadVideoInChunks(file, progressLabel) {
+                return uploadFileInChunks(file, progressLabel, 'video');
+            }
+
+            async function finishUpload({ uploadId, title, adUrl = '', adUrls = [], requiredClicks, folderId = null }) {
+                return api(`/api/admin/uploads/${uploadId}/finish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, adUrl, adUrls, requiredClicks, folderId })
+                });
+            }
+
+            async function finishImageUpload({ uploadId, title, folderId = null, adUrl = '', adUrls = [], requiredClicks = 1 }) {
+                return api(`/api/admin/images/uploads/${uploadId}/finish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, folderId, adUrl, adUrls, requiredClicks })
+                });
+            }
+
+            function getSingleDirectMode() {
+                return document.querySelector('input[name="singleDirectMode"]:checked').value;
+            }
+
+            function renderDirectInputs(container, count, prefix, fileName = '') {
+                container.innerHTML = '';
+                for (let index = 0; index < count; index += 1) {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = `
+                        <label class="block text-xs font-medium text-neutral-400 mb-1 truncate">${escapeHtml(fileName ? `${fileName} - Link ${index + 1}` : `Direct link ${index + 1}`)}</label>
+                        <input type="url" data-direct-prefix="${prefix}" data-direct-index="${index}" placeholder="https://..." class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500">
+                    `;
+                    container.appendChild(wrapper);
+                }
+            }
+
+            function updateSingleDirectMode() {
+                const different = getSingleDirectMode() === 'different';
+                singleSameDirectGroup.classList.toggle('hidden', different);
+                singleDifferentDirectGroup.classList.toggle('hidden', !different);
+                if (different) {
+                    renderDirectInputs(singleDifferentDirectGroup, Number(inputClicks.value || 1), 'single');
+                }
+            }
+
+            function getSingleDirectLinks() {
+                if (getSingleDirectMode() === 'same') {
+                    return [document.getElementById('inputAdUrl').value.trim()].filter(Boolean);
+                }
+
+                return Array.from(singleDifferentDirectGroup.querySelectorAll('input[data-direct-prefix="single"]'))
+                    .map(input => input.value.trim())
+                    .filter(Boolean);
+            }
+
+            function getSingleDirectInputs() {
+                if (getSingleDirectMode() === 'same') {
+                    return [document.getElementById('inputAdUrl')];
+                }
+                return Array.from(singleDifferentDirectGroup.querySelectorAll('input[data-direct-prefix="single"]'));
+            }
+
+            function getFolderDirectInputs() {
+                if (getFolderAdMode() === 'same') {
+                    return [document.getElementById('folderSameAdUrl')];
+                }
+                return Array.from(differentAdGroup.querySelectorAll('input[data-direct-prefix^="folder-"]'));
+            }
+
+            function fillInputsRandom(inputs) {
+                if (!linkBankItems.length) {
+                    showToast('Bank direct link masih kosong.', true);
+                    return;
+                }
+                inputs.forEach(input => {
+                    input.value = randomBankUrl();
+                });
+                showToast('Kolom link diisi random dari bank link.');
+            }
+
+            function clearInputs(inputs) {
+                inputs.forEach(input => {
+                    input.value = '';
+                });
+            }
+
+            function updateDifferentAdInputs() {
+                const files = Array.from(folderVideoFiles.files || []);
+                const clickCount = Number(folderClicks.value || 1);
+                differentAdGroup.innerHTML = '';
+                files.forEach((file, index) => {
+                    const wrapper = document.createElement('div');
+                    const inner = document.createElement('div');
+                    inner.className = 'space-y-2';
+                    wrapper.innerHTML = `
+                        <p class="text-sm font-medium text-neutral-300 truncate">${escapeHtml(file.name)}</p>
+                    `;
+                    renderDirectInputs(inner, clickCount, `folder-${index}`, file.name);
+                    wrapper.appendChild(inner);
+                    differentAdGroup.appendChild(wrapper);
+                });
+            }
+
+            function getFolderAdMode() {
+                return document.querySelector('input[name="folderAdMode"]:checked').value;
+            }
+
+            document.querySelectorAll('input[name="folderAdMode"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    const different = getFolderAdMode() === 'different';
+                    sameAdGroup.classList.toggle('hidden', different);
+                    differentAdGroup.classList.toggle('hidden', !different);
+                    updateDifferentAdInputs();
+                });
+            });
+
+            document.querySelectorAll('input[name="singleDirectMode"]').forEach(input => {
+                input.addEventListener('change', updateSingleDirectMode);
+            });
+            inputClicks.addEventListener('input', updateSingleDirectMode);
+            folderClicks.addEventListener('input', updateDifferentAdInputs);
+            folderVideoFiles.addEventListener('change', updateDifferentAdInputs);
+            singleTabBtn.addEventListener('click', () => setUploadMode('single'));
+            folderTabBtn.addEventListener('click', () => setUploadMode('folder'));
+            imageTabBtn.addEventListener('click', () => setUploadMode('image'));
+            imageDropdownBtn.addEventListener('click', () => toggleDropdown(imageDropdownBody, imageDropdownIcon));
+            folderDropdownBtn.addEventListener('click', () => toggleDropdown(folderDropdownBody, folderDropdownIcon));
+            videoDropdownBtn.addEventListener('click', () => toggleDropdown(videoDropdownBody, videoDropdownIcon));
+            navToggle.addEventListener('click', () => {
+                const shouldOpen = navLinks.classList.contains('hidden');
+                navLinks.classList.toggle('hidden', !shouldOpen);
+                navLinks.classList.toggle('grid', shouldOpen);
+                navToggle.innerText = shouldOpen ? 'Tutup' : 'Menu';
+            });
+            serverMobileToggle.addEventListener('click', () => {
+                const shouldOpen = serverDetailsBody.classList.contains('hidden');
+                serverDetailsBody.classList.toggle('hidden', !shouldOpen);
+                serverDetailsBody.classList.toggle('grid', shouldOpen);
+                serverMobileToggle.innerText = shouldOpen ? 'Tutup' : 'Detail';
+            });
+            backupMobileToggle.addEventListener('click', () => {
+                const isHidden = backupDetailsBody.classList.toggle('hidden');
+                backupMobileToggle.innerText = isHidden ? 'Detail Backup' : 'Tutup';
+            });
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    if (!analyticsSection.classList.contains('hidden')) renderHourlyChart();
+                }, 150);
+            });
+            visitorAdClicksBtn.addEventListener('click', () => {
+                visitorFilter = 'ad_click';
+                renderVisitors();
+            });
+            visitorPageViewsBtn.addEventListener('click', () => {
+                visitorFilter = 'page_view';
+                renderVisitors();
+            });
+            clipVideoSelect.addEventListener('change', updateClipPreviewSource);
+            clipVideoPicker.addEventListener('click', event => {
+                const card = event.target.closest('[data-clip-video-id]');
+                if (!card) return;
+                clipVideoSelect.value = card.dataset.clipVideoId;
+                updateClipPreviewSource();
+            });
+            clipPreviewBtn.addEventListener('click', playClipPreview);
+            clipPreviewVideo.addEventListener('timeupdate', () => {
+                const end = Number(clipEndInput.value || 0);
+                if (end > 0 && clipPreviewVideo.currentTime >= end) {
+                    clipPreviewVideo.pause();
+                }
+            });
+            backupAllBtn.addEventListener('click', async () => {
+                try {
+                    backupAllBtn.disabled = true;
+                    backupAllBtn.innerText = 'Menjadwalkan...';
+                    const result = await api('/api/admin/telegram-backups/backup-all', { method: 'POST' });
+                    await loadData();
+                    showToast(`${result.queued || 0} video dijadwalkan backup.`);
+                } catch (error) {
+                    showToast(error.message || 'Backup all gagal.', true);
+                } finally {
+                    backupAllBtn.disabled = false;
+                    backupAllBtn.innerText = 'Backup All';
+                }
+            });
+            restoreAllBtn.addEventListener('click', async () => {
+                if (!confirm('Restore semua video dari Telegram? File video di server akan diisi ulang dari backup yang tersedia.')) return;
+                try {
+                    restoreAllBtn.disabled = true;
+                    restoreAllBtn.innerText = 'Restore...';
+                    const result = await api('/api/admin/telegram-backups/restore-all', { method: 'POST' });
+                    await loadData();
+                    const failed = (result.failed || []).length;
+                    showToast(failed ? `Restore selesai, ${failed} gagal.` : 'Restore semua video selesai.', Boolean(failed));
+                } catch (error) {
+                    showToast(error.message || 'Restore all gagal.', true);
+                } finally {
+                    restoreAllBtn.disabled = false;
+                    restoreAllBtn.innerText = 'Restore All';
+                }
+            });
+
+            async function triggerCompressAll(force = false) {
+                const button = force ? compressForceAllBtn : compressAllBtn;
+                const originalLabel = button.innerText;
+                try {
+                    button.disabled = true;
+                    button.innerText = 'Menjadwalkan...';
+                    const result = await api('/api/admin/videos/compress-all', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ force })
+                    });
+                    await loadData();
+                    showToast(result.message || `${result.queued || 0} video dijadwalkan.`);
+                } catch (error) {
+                    showToast(error.message || 'Gagal menjadwalkan kompresi.', true);
+                } finally {
+                    button.disabled = false;
+                    button.innerText = originalLabel;
+                }
+            }
+            compressAllBtn.addEventListener('click', () => triggerCompressAll(false));
+            compressForceAllBtn.addEventListener('click', () => {
+                if (!confirm('Paksa kompres ulang semua video di atas ambang? Termasuk video yang sudah Selesai/Dilewati.')) return;
+                triggerCompressAll(true);
+            });
+            singleAutoFillBtn.addEventListener('click', () => fillInputsRandom(getSingleDirectInputs()));
+            folderAutoFillBtn.addEventListener('click', () => fillInputsRandom(getFolderDirectInputs()));
+            singleClearLinksBtn.addEventListener('click', () => clearInputs(getSingleDirectInputs()));
+            folderClearLinksBtn.addEventListener('click', () => clearInputs(getFolderDirectInputs()));
+
+            telegramBotConfigForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                try {
+                    const data = await api('/api/admin/telegram-bot', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            botToken: botTokenInput.value.trim(),
+                            chatId: botChatIdInput.value.trim()
+                        })
+                    });
+                    telegramBotState = data;
+                    botTokenInput.value = '';
+                    renderTelegramBotConfig();
+                    showToast('Konfigurasi bot tersimpan.');
+                } catch (error) {
+                    showToast(error.message || 'Gagal menyimpan bot.', true);
+                }
+            });
+
+            telegramBotSendForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const videoIds = Array.from(document.querySelectorAll('[data-bot-video]:checked')).map(input => input.value);
+                const imageIds = Array.from(document.querySelectorAll('[data-bot-image]:checked')).map(input => input.value);
+                telegramBotSendBtn.disabled = true;
+                telegramBotSendBtn.innerText = 'Mengirim...';
+                try {
+                    const result = await api('/api/admin/telegram-bot/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            description: botDescriptionInput.value.trim(),
+                            videoIds,
+                            imageIds
+                        })
+                    });
+                    showToast(`${(result.sent || []).length} pesan terkirim ke Telegram.`);
+                } catch (error) {
+                    showToast(error.message || 'Gagal mengirim Telegram.', true);
+                } finally {
+                    telegramBotSendBtn.disabled = false;
+                    telegramBotSendBtn.innerText = 'Kirim ke Telegram';
+                }
+            });
+
+            clipForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                clipSubmitBtn.disabled = true;
+                clipSubmitBtn.innerText = 'Memotong...';
+                try {
+                    const result = await api('/api/admin/video-clips', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            videoId: clipVideoSelect.value,
+                            start: Number(clipStartInput.value || 0),
+                            end: Number(clipEndInput.value || 0),
+                            title: clipTitleInput.value.trim()
+                        })
+                    });
+                    clipDownloadLink.href = result.downloadUrl || result.video?.videoUrl || '#';
+                    clipDownloadLink.download = result.video?.fileName || 'clip.mp4';
+                    clipResultBox.classList.remove('hidden');
+                    await loadData();
+                    showToast('Klip berhasil dibuat.');
+                } catch (error) {
+                    showToast(error.message || 'Gagal membuat klip.', true);
+                } finally {
+                    clipSubmitBtn.disabled = false;
+                    clipSubmitBtn.innerText = 'Buat Klip';
+                }
+            });
+
+            linkBankCancelBtn.addEventListener('click', () => {
+                linkBankEditId.value = '';
+                linkBankForm.reset();
+                linkBankSubmitBtn.innerText = 'Simpan Link';
+            });
+
+            linkBankForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const id = linkBankEditId.value;
+                try {
+                    await api(id ? `/api/admin/link-bank/${id}` : '/api/admin/link-bank', {
+                        method: id ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            label: linkBankLabel.value.trim(),
+                            url: linkBankUrl.value.trim()
+                        })
+                    });
+                    linkBankEditId.value = '';
+                    linkBankForm.reset();
+                    linkBankSubmitBtn.innerText = 'Simpan Link';
+                    await loadData();
+                    showToast(id ? 'Link berhasil diedit.' : 'Link berhasil disimpan.');
+                } catch (error) {
+                    showToast(error.message || 'Gagal menyimpan link.', true);
+                }
+            });
+
+            bulkLinkBankForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const links = bulkLinkBankText.value
+                    .split(/\r?\n/)
+                    .map(line => line.trim())
+                    .filter(Boolean)
+                    .map(line => {
+                        if (line.includes('|')) {
+                            const parts = line.split('|');
+                            const url = parts.pop().trim();
+                            return { label: parts.join('|').trim(), url };
+                        }
+                        return { label: '', url: line };
+                    })
+                    .filter(item => item.url);
+
+                if (!links.length) {
+                    showToast('Masukkan minimal satu link.', true);
+                    return;
+                }
+
+                try {
+                    await api('/api/admin/link-bank', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ links })
+                    });
+                    bulkLinkBankForm.reset();
+                    await loadData();
+                    showToast(`${links.length} link berhasil disimpan.`);
+                } catch (error) {
+                    showToast(error.message || 'Gagal menyimpan banyak link.', true);
+                }
+            });
+
+            linkBankList.addEventListener('click', async event => {
+                const button = event.target.closest('button[data-link-action]');
+                if (!button) return;
+                const item = linkBankItems.find(link => link.id === button.closest('[data-id]').dataset.id);
+                if (!item) return;
+
+                if (button.dataset.linkAction === 'use') {
+                    const activeInputs = folderForm.classList.contains('hidden') ? getSingleDirectInputs() : getFolderDirectInputs();
+                    const firstEmpty = activeInputs.find(input => !input.value.trim()) || activeInputs[0];
+                    if (firstEmpty) {
+                        firstEmpty.value = item.url;
+                        showToast('Link dimasukkan ke kolom aktif.');
+                    }
+                    return;
+                }
+
+                if (button.dataset.linkAction === 'edit') {
+                    linkBankEditId.value = item.id;
+                    linkBankLabel.value = item.label || '';
+                    linkBankUrl.value = item.url;
+                    linkBankSubmitBtn.innerText = 'Simpan Edit';
+                    linkBankUrl.focus();
+                    return;
+                }
+
+                if (button.dataset.linkAction === 'delete' && confirm('Hapus link tersimpan ini?')) {
+                    await api(`/api/admin/link-bank/${item.id}`, { method: 'DELETE' });
+                    await loadData();
+                    showToast('Link berhasil dihapus.');
+                }
+            });
+
+            loginForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                pinError.classList.add('hidden');
+                try {
+                    const data = await api('/api/admin/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pin: pinInput.value })
+                    });
+                    token = data.token;
+                    sessionStorage.setItem(TOKEN_KEY, token);
+                    loginGate.classList.add('hidden');
+                    pinInput.value = '';
+                    await loadData();
+                } catch (error) {
+                    pinError.innerText = error.message || 'PIN salah.';
+                    pinError.classList.remove('hidden');
+                }
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                token = '';
+                sessionStorage.removeItem(TOKEN_KEY);
+                loginGate.classList.remove('hidden');
+            });
+
+            singleForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const file = document.getElementById('inputVideoFile').files[0];
+                if (!file) return;
+                singleSubmitBtn.disabled = true;
+                try {
+                    const requiredClicks = Number(inputClicks.value);
+                    const directLinks = getSingleDirectLinks();
+                    if (!directLinks.length || (getSingleDirectMode() === 'different' && directLinks.length !== requiredClicks)) {
+                        showToast(`Isi ${requiredClicks} direct link terlebih dahulu.`, true);
+                        return;
+                    }
+
+                    const uploadId = await uploadVideoInChunks(file, text => singleSubmitBtn.innerText = text);
+                    singleSubmitBtn.innerText = 'Menyimpan...';
+                    await finishUpload({
+                        uploadId,
+                        title: document.getElementById('inputTitle').value.trim(),
+                        adUrl: directLinks[0],
+                        adUrls: directLinks,
+                        requiredClicks
+                    });
+                    singleForm.reset();
+                    await loadData();
+                    showToast('Video berhasil ditambahkan.');
+                } catch (error) {
+                    showToast(error.message || 'Upload gagal.', true);
+                } finally {
+                    singleSubmitBtn.disabled = false;
+                    singleSubmitBtn.innerText = 'Tambah Video';
+                }
+            });
+
+            folderForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const files = Array.from(folderVideoFiles.files || []);
+                if (!files.length) return;
+                const mode = getFolderAdMode();
+                const requiredClicks = Number(folderClicks.value);
+                const sameAdUrl = document.getElementById('folderSameAdUrl').value.trim();
+                const differentUrlsByFile = files.map((_, index) => {
+                    return Array.from(differentAdGroup.querySelectorAll(`input[data-direct-prefix="folder-${index}"]`))
+                        .map(input => input.value.trim())
+                        .filter(Boolean);
+                });
+
+                if (mode === 'same' && !sameAdUrl) {
+                    showToast('URL direct semua video wajib diisi.', true);
+                    return;
+                }
+
+                if (mode === 'different' && differentUrlsByFile.some(urls => urls.length !== requiredClicks)) {
+                    showToast(`Setiap video wajib punya ${requiredClicks} direct link.`, true);
+                    return;
+                }
+
+                folderSubmitBtn.disabled = true;
+                try {
+                    folderSubmitBtn.innerText = 'Membuat folder...';
+                    const folderData = await api('/api/admin/folders', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: document.getElementById('folderTitle').value.trim() })
+                    });
+
+                    for (let index = 0; index < files.length; index += 1) {
+                        const file = files[index];
+                        const isImage = file.type.startsWith('image/');
+                        const directLinks = mode === 'same' ? [sameAdUrl] : differentUrlsByFile[index];
+                        const uploadId = isImage
+                            ? await uploadFileInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`, 'image')
+                            : await uploadVideoInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`);
+
+                        if (isImage) {
+                            await finishImageUpload({
+                                uploadId,
+                                title: file.name.replace(/\.[^/.]+$/, ''),
+                                adUrl: directLinks[0],
+                                adUrls: directLinks,
+                                requiredClicks,
+                                folderId: folderData.folder.id
+                            });
+                        } else {
+                            await finishUpload({
+                                uploadId,
+                                title: file.name.replace(/\.[^/.]+$/, ''),
+                                adUrl: directLinks[0],
+                                adUrls: directLinks,
+                                requiredClicks,
+                                folderId: folderData.folder.id
+                            });
+                        }
+                    }
+
+                    folderForm.reset();
+                    differentAdGroup.innerHTML = '';
+                    sameAdGroup.classList.remove('hidden');
+                    differentAdGroup.classList.add('hidden');
+                    await loadData();
+                    showToast('Folder berhasil dibuat.');
+                } catch (error) {
+                    showToast(error.message || 'Upload folder gagal.', true);
+                } finally {
+                    folderSubmitBtn.disabled = false;
+                    folderSubmitBtn.innerText = 'Upload Folder';
+                }
+            });
+
+            imageForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const files = Array.from(document.getElementById('imageFile').files || []);
+                if (!files.length) return;
+                imageSubmitBtn.disabled = true;
+
+                try {
+                    const baseTitle = document.getElementById('imageTitle').value.trim();
+                    for (let index = 0; index < files.length; index += 1) {
+                        const file = files[index];
+                        const uploadId = await uploadFileInChunks(file, text => {
+                            imageSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`;
+                        }, 'image');
+                        imageSubmitBtn.innerText = `${index + 1}/${files.length} Menyimpan...`;
+                        await finishImageUpload({
+                            uploadId,
+                            title: baseTitle
+                                ? (files.length > 1 ? `${baseTitle} ${index + 1}` : baseTitle)
+                                : file.name.replace(/\.[^/.]+$/, '')
+                        });
+                    }
+                    imageForm.reset();
+                    await loadData();
+                    showToast(`${files.length} image berhasil diupload.`);
+                } catch (error) {
+                    showToast(error.message || 'Upload image gagal.', true);
+                } finally {
+                    imageSubmitBtn.disabled = false;
+                    imageSubmitBtn.innerText = 'Upload Image';
+                }
+            });
+
+            folderList.addEventListener('click', async event => {
+                const button = event.target.closest('button[data-folder-action]');
+                if (!button) return;
+                const row = button.closest('[data-id]');
+                const id = row.dataset.id;
+                try {
+                    if (button.dataset.folderAction === 'copy') {
+                        await navigator.clipboard.writeText(row.dataset.url);
+                        showToast('Link folder berhasil disalin.');
+                        return;
+                    }
+                    if (button.dataset.folderAction === 'enable' || button.dataset.folderAction === 'disable') {
+                        const isEnabled = button.dataset.folderAction === 'enable';
+                        await api(`/api/admin/folders/${id}/enabled`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isEnabled })
+                        });
+                        await loadData();
+                        showToast(isEnabled ? 'Folder dinyalakan.' : 'Folder dimatikan.');
+                    }
+                    if (button.dataset.folderAction === 'delete' && confirm('Hapus folder beserta semua videonya?')) {
+                        await api(`/api/admin/folders/${id}`, { method: 'DELETE' });
+                        await loadData();
+                        showToast('Folder berhasil dihapus.');
+                    }
+                } catch (error) {
+                    showToast(error.message || 'Aksi folder gagal.', true);
+                }
+            });
+
+            imageList.addEventListener('click', async event => {
+                const button = event.target.closest('button[data-image-action]');
+                if (!button) return;
+                const card = button.closest('[data-id]');
+                const id = card.dataset.id;
+                try {
+                    if (button.dataset.imageAction === 'copy') {
+                        await navigator.clipboard.writeText(card.dataset.url);
+                        showToast('Link image berhasil disalin.');
+                        return;
+                    }
+                    if (button.dataset.imageAction === 'delete' && confirm('Hapus image ini?')) {
+                        await api(`/api/admin/images/${id}`, { method: 'DELETE' });
+                        await loadData();
+                        showToast('Image berhasil dihapus.');
+                    }
+                } catch (error) {
+                    showToast(error.message || 'Aksi image gagal.', true);
+                }
+            });
+
+            videoTableBody.addEventListener('click', async event => {
+                const button = event.target.closest('button[data-action]');
+                if (!button) return;
+                const row = button.closest('tr');
+                const id = row.dataset.id;
+                try {
+                    if (button.dataset.action === 'copy') {
+                        await navigator.clipboard.writeText(row.dataset.watchUrl);
+                        showToast('Link video berhasil disalin.');
+                        return;
+                    }
+                    if (button.dataset.action === 'enable' || button.dataset.action === 'disable') {
+                        const isEnabled = button.dataset.action === 'enable';
+                        await api(`/api/admin/videos/${id}/enabled`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isEnabled })
+                        });
+                        await loadData();
+                        showToast(isEnabled ? 'Video dinyalakan.' : 'Video dimatikan.');
+                    }
+                    if (button.dataset.action === 'backup') {
+                        await api(`/api/admin/telegram-backups/videos/${id}`, { method: 'POST' });
+                        await loadData();
+                        showToast('Backup Telegram dijadwalkan.');
+                    }
+                    if (button.dataset.action === 'compress') {
+                        const video = videoList.find(item => item.id === id);
+                        const force = video && video.compressionStatus === 'done'
+                            ? confirm('Video ini sudah dikompres. Paksa kompres ulang?')
+                            : false;
+                        await api(`/api/admin/videos/${id}/compress`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ force })
+                        });
+                        await loadData();
+                        showToast('Kompresi video dijadwalkan.');
+                    }
+                    if (button.dataset.action === 'restore' && confirm('Restore video ini dari Telegram? File server akan diisi ulang dari backup.')) {
+                        await api(`/api/admin/telegram-backups/videos/${id}/restore`, { method: 'POST' });
+                        await loadData();
+                        showToast('Restore dari Telegram selesai.');
+                    }
+                    if (button.dataset.action === 'delete' && confirm('Hapus video ini?')) {
+                        await api(`/api/admin/videos/${id}`, { method: 'DELETE' });
+                        await loadData();
+                        showToast('Video berhasil dihapus.');
+                    }
+                } catch (error) {
+                    showToast(error.message || 'Aksi gagal.', true);
+                }
+            });
+
+            if (token) {
+                loginGate.classList.add('hidden');
+                loadData().catch(() => {
+                    token = '';
+                    sessionStorage.removeItem(TOKEN_KEY);
+                    loginGate.classList.remove('hidden');
+                });
+            }
+
+            applyAdminPage();
+            setInterval(refreshServerStatus, 5000);
+        });
+    </script>
+</body>
+</html>

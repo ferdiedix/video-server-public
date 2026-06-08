@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# media uploaded oleh user
+uploads/
+images/
+thumbnails/
+
+# data persisten (JSON store) dan secrets
+data/
+.env
+.env.local
+*.session.txt
+data/telegram-session.txt
+
+# logs dan temp
+*.log
+*.tmp
+*.part
+
+# editor & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# memory pribadi (kalau folder memory dipakai untuk catatan)
+memory/
+MEMORY.md

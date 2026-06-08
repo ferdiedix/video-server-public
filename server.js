@@ -45,6 +45,22 @@ const BANDWIDTH_BURST_MULTIPLIER = Math.max(1, Number(process.env.BANDWIDTH_BURS
 
 const sessions = new Map();
 const uploadSessions = new Map();
+const activeUploads = { count: 0, lastActivityAt: 0 };
+
+function markUploadActive() {
+    activeUploads.count += 1;
+    activeUploads.lastActivityAt = Date.now();
+}
+
+function markUploadIdle() {
+    if (activeUploads.count > 0) activeUploads.count -= 1;
+    activeUploads.lastActivityAt = Date.now();
+}
+
+function isUploadInProgress() {
+    if (activeUploads.count > 0) return true;
+    return (Date.now() - activeUploads.lastActivityAt) < 5000;
+}
 const thumbnailGenerations = new Map();
 let lastNetworkSample = null;
 let telegramBackupQueue = Promise.resolve();
@@ -1591,6 +1607,12 @@ function enqueueVideoCompression(video, { force = false } = {}) {
     });
 
     const queued = videoCompressionQueue.then(async () => {
+        // Pause if upload is currently in progress; ffmpeg + disk write
+        // bareng bikin upload jadi sangat lambat di HP.
+        while (isUploadInProgress()) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
         compressionState.queue = compressionState.queue.filter(item => item.id !== video.id);
         const videos = await readVideos();
         const latest = videos.find(item => item.id === video.id) || video;
@@ -2513,23 +2535,28 @@ async function handleApi(req, res, url) {
                 return;
             }
 
-            const body = await readJson(req);
-            const parsed = parseDataUrl(body.dataUrl);
-            const chunkIndex = Number(body.chunkIndex);
+            markUploadActive();
+            try {
+                const body = await readJson(req);
+                const parsed = parseDataUrl(body.dataUrl);
+                const chunkIndex = Number(body.chunkIndex);
 
-            if (!parsed || chunkIndex !== upload.nextChunkIndex) {
-                sendError(res, 400, 'Chunk upload tidak valid.');
-                return;
+                if (!parsed || chunkIndex !== upload.nextChunkIndex) {
+                    sendError(res, 400, 'Chunk upload tidak valid.');
+                    return;
+                }
+
+                await fs.appendFile(upload.tempPath, parsed.buffer);
+                upload.receivedBytes += parsed.buffer.length;
+                upload.nextChunkIndex += 1;
+
+                sendJson(res, 200, {
+                    receivedBytes: upload.receivedBytes,
+                    nextChunkIndex: upload.nextChunkIndex
+                });
+            } finally {
+                markUploadIdle();
             }
-
-            await fs.appendFile(upload.tempPath, parsed.buffer);
-            upload.receivedBytes += parsed.buffer.length;
-            upload.nextChunkIndex += 1;
-
-            sendJson(res, 200, {
-                receivedBytes: upload.receivedBytes,
-                nextChunkIndex: upload.nextChunkIndex
-            });
             return;
         }
 

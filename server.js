@@ -38,6 +38,8 @@ const COMPRESS_AUDIO_BITRATE = String(process.env.COMPRESS_AUDIO_BITRATE || '128
 const COMPRESS_MIN_SAVING_RATIO = Math.max(0, Math.min(0.95, Number(process.env.COMPRESS_MIN_SAVING || 0.15)));
 const COMPRESS_CPU_PERCENT = Math.max(10, Math.min(100, Number(process.env.COMPRESS_CPU_PERCENT || DEFAULT_COMPRESS_CPU)));
 const COMPRESS_NICENESS = Math.max(0, Math.min(19, Number(process.env.COMPRESS_NICENESS || 10)));
+const BANDWIDTH_PER_USER_KBPS = Math.max(0, Number(process.env.BANDWIDTH_PER_USER_KBPS || 500));
+const BANDWIDTH_PER_USER_BPS = BANDWIDTH_PER_USER_KBPS * 1024;
 
 const sessions = new Map();
 const uploadSessions = new Map();
@@ -3182,7 +3184,7 @@ async function serveStatic(req, res, url) {
             res.end();
             return;
         }
-        fsNative.createReadStream(thumbPath).pipe(res);
+        pipeWithThrottle(fsNative.createReadStream(thumbPath), res, getClientIp(req));
         return;
     }
 
@@ -3231,7 +3233,7 @@ async function serveStatic(req, res, url) {
             return;
         }
 
-        fsNative.createReadStream(imagePath).pipe(res);
+        pipeWithThrottle(fsNative.createReadStream(imagePath), res, getClientIp(req));
         return;
     }
 
@@ -3305,7 +3307,7 @@ async function serveStatic(req, res, url) {
                 'X-Content-Type-Options': 'nosniff',
                 'Cache-Control': 'public, max-age=3600'
             });
-            fsNative.createReadStream(requestedPath, { start, end }).pipe(res);
+            pipeWithThrottle(fsNative.createReadStream(requestedPath, { start, end }), res, getClientIp(req));
             return;
         }
 
@@ -3324,7 +3326,7 @@ async function serveStatic(req, res, url) {
                 return;
             }
 
-            fsNative.createReadStream(requestedPath).pipe(res);
+            pipeWithThrottle(fsNative.createReadStream(requestedPath), res, getClientIp(req));
             return;
         }
 
@@ -3351,6 +3353,121 @@ const appNetworkCounter = {
     rx: 0,
     tx: 0
 };
+
+const bandwidthBuckets = new Map();
+
+function getBandwidthBucket(ip) {
+    const now = Date.now();
+    let bucket = bandwidthBuckets.get(ip);
+    if (!bucket) {
+        bucket = {
+            tokens: BANDWIDTH_PER_USER_BPS,
+            updatedAt: now,
+            queuedAt: now
+        };
+        bandwidthBuckets.set(ip, bucket);
+    }
+    return bucket;
+}
+
+function refillBucket(bucket) {
+    if (BANDWIDTH_PER_USER_BPS <= 0) return;
+    const now = Date.now();
+    const elapsed = (now - bucket.updatedAt) / 1000;
+    if (elapsed > 0) {
+        bucket.tokens = Math.min(
+            BANDWIDTH_PER_USER_BPS * 1.5,
+            bucket.tokens + elapsed * BANDWIDTH_PER_USER_BPS
+        );
+        bucket.updatedAt = now;
+    }
+}
+
+function consumeBandwidth(ip, bytes) {
+    if (BANDWIDTH_PER_USER_BPS <= 0 || !ip || bytes <= 0) return Promise.resolve();
+    const bucket = getBandwidthBucket(ip);
+    refillBucket(bucket);
+    if (bucket.tokens >= bytes) {
+        bucket.tokens -= bytes;
+        return Promise.resolve();
+    }
+    const deficit = bytes - bucket.tokens;
+    const waitMs = Math.ceil((deficit / BANDWIDTH_PER_USER_BPS) * 1000);
+    bucket.tokens = 0;
+    return new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 5000)));
+}
+
+setInterval(() => {
+    if (BANDWIDTH_PER_USER_BPS <= 0) return;
+    const cutoff = Date.now() - 60 * 1000;
+    for (const [ip, bucket] of bandwidthBuckets.entries()) {
+        if (bucket.updatedAt < cutoff) bandwidthBuckets.delete(ip);
+    }
+}, 30 * 1000).unref?.();
+
+function pipeWithThrottle(readable, res, ip) {
+    if (BANDWIDTH_PER_USER_BPS <= 0) {
+        readable.pipe(res);
+        return;
+    }
+
+    const chunkSize = Math.max(8 * 1024, Math.min(256 * 1024, Math.floor(BANDWIDTH_PER_USER_BPS / 4)));
+    let buffer = Buffer.alloc(0);
+    let ended = false;
+    let writing = false;
+
+    function pumpFromBuffer() {
+        if (writing) return;
+        writing = true;
+
+        (async () => {
+            while (buffer.length > 0) {
+                const slice = buffer.slice(0, chunkSize);
+                buffer = buffer.slice(slice.length);
+                await consumeBandwidth(ip, slice.length);
+                const ok = res.write(slice);
+                if (!ok) {
+                    await new Promise(resolve => res.once('drain', resolve));
+                }
+            }
+            writing = false;
+            if (ended) {
+                res.end();
+            } else {
+                readable.resume();
+            }
+        })().catch(error => {
+            writing = false;
+            if (!res.writableEnded) {
+                try { res.destroy(error); } catch {}
+            }
+        });
+    }
+
+    readable.on('data', chunk => {
+        if (!chunk || !chunk.length) return;
+        buffer = buffer.length ? Buffer.concat([buffer, chunk]) : chunk;
+        if (buffer.length >= chunkSize * 4) {
+            readable.pause();
+        }
+        pumpFromBuffer();
+    });
+
+    readable.on('end', () => {
+        ended = true;
+        pumpFromBuffer();
+    });
+
+    readable.on('error', error => {
+        if (!res.writableEnded) {
+            try { res.destroy(error); } catch {}
+        }
+    });
+
+    res.on('close', () => {
+        try { readable.destroy(); } catch {}
+    });
+}
 
 function getChunkByteLength(chunk) {
     if (!chunk) return 0;

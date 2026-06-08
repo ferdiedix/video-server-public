@@ -459,6 +459,38 @@ function detectCpuCount() {
     return Math.max(1, fromOs);
 }
 
+let lastCpuStatSample = null;
+
+function readAggregateCpuStat() {
+    try {
+        const raw = fsNative.readFileSync('/proc/stat', 'utf8');
+        const firstLine = raw.split(/\r?\n/, 1)[0] || '';
+        const parts = firstLine.trim().split(/\s+/);
+        if (parts[0] !== 'cpu') return null;
+        const numbers = parts.slice(1).map(value => Number(value || 0));
+        const total = numbers.reduce((sum, value) => sum + value, 0);
+        const idle = (numbers[3] || 0) + (numbers[4] || 0);
+        return { total, idle };
+    } catch {
+        return null;
+    }
+}
+
+function sampleCpuPercent() {
+    const sample = readAggregateCpuStat();
+    if (!sample) return null;
+
+    const previous = lastCpuStatSample;
+    lastCpuStatSample = sample;
+    if (!previous) return null;
+
+    const totalDiff = sample.total - previous.total;
+    const idleDiff = sample.idle - previous.idle;
+    if (totalDiff <= 0) return null;
+    const busyRatio = Math.max(0, Math.min(1, (totalDiff - idleDiff) / totalDiff));
+    return Math.round(busyRatio * 100);
+}
+
 async function getServerStatus() {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
@@ -467,6 +499,9 @@ async function getServerStatus() {
     const cpuCount = detectCpuCount();
     const storage = await getStorageStatus();
     const network = await getNetworkSample();
+    const cpuFromProc = sampleCpuPercent();
+    const fallbackPercent = Math.min(100, Math.round(((load[0] || 0) / cpuCount) * 100));
+    const cpuPercent = typeof cpuFromProc === 'number' ? cpuFromProc : fallbackPercent;
 
     return {
         uptime: os.uptime(),
@@ -477,7 +512,8 @@ async function getServerStatus() {
             cores: cpuCount,
             load1: load[0] || 0,
             load5: load[1] || 0,
-            percent: Math.min(100, Math.round(((load[0] || 0) / cpuCount) * 100))
+            percent: cpuPercent,
+            source: typeof cpuFromProc === 'number' ? 'proc-stat' : 'loadavg'
         },
         memory: {
             total: totalMem,

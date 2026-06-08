@@ -443,7 +443,10 @@ async function getStorageStatus() {
 }
 
 async function readNetworkCounters() {
-    // 0) root su -c cat /proc/net/dev (kalau root tersedia)
+    // 0a) App-level counter (selalu tersedia, gak butuh permission)
+    const appSample = { rx: appNetworkCounter.rx, tx: appNetworkCounter.tx, source: 'app-level' };
+
+    // 0b) root su -c cat /proc/net/dev (kalau root tersedia)
     if (IS_ANDROID && await hasRootAccess()) {
         try {
             const raw = await execCommandRoot('cat /proc/net/dev');
@@ -592,7 +595,8 @@ async function readNetworkCounters() {
         // ignore
     }
 
-    return null;
+    // Final fallback: app-level counter (always available)
+    return { rx: appNetworkCounter.rx, tx: appNetworkCounter.tx, source: 'app-level' };
 }
 
 async function getNetworkSample() {
@@ -1460,11 +1464,15 @@ async function performRestore(record, { force = false } = {}) {
     }).catch(() => {});
 
     try {
+        let lastReceived = 0;
         await telegramBackup.restoreVideoBackup({
             backup: record.telegram,
             outputPath: filePath,
             onProgress: (received, total) => {
                 if (!restoreState.current || restoreState.current.id !== videoSnapshot.id) return;
+                const delta = Math.max(0, received - lastReceived);
+                lastReceived = received;
+                appNetworkCounter.rx += delta;
                 restoreState.current.receivedBytes = received;
                 if (total > 0) {
                     restoreState.current.totalBytes = total;
@@ -3337,7 +3345,40 @@ async function serveStatic(req, res, url) {
     }
 }
 
+const appNetworkCounter = {
+    rx: 0,
+    tx: 0
+};
+
+function instrumentResponseTraffic(req, res) {
+    const originalWrite = res.write.bind(res);
+    const originalEnd = res.end.bind(res);
+
+    res.write = function (chunk, ...rest) {
+        if (chunk) {
+            const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+            appNetworkCounter.tx += len;
+        }
+        return originalWrite(chunk, ...rest);
+    };
+
+    res.end = function (chunk, ...rest) {
+        if (chunk) {
+            const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+            appNetworkCounter.tx += len;
+        }
+        return originalEnd(chunk, ...rest);
+    };
+
+    req.on('data', chunk => {
+        if (!chunk) return;
+        const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+        appNetworkCounter.rx += len;
+    });
+}
+
 async function handleRequest(req, res) {
+    instrumentResponseTraffic(req, res);
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     try {

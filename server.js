@@ -1636,6 +1636,52 @@ async function scheduleVideoCompressionIfNeeded(video) {
     }
 }
 
+async function cleanupOrphanCompressionArtifacts() {
+    try {
+        const entries = await fs.readdir(UPLOAD_DIR);
+        let removed = 0;
+        let bytes = 0;
+        for (const entry of entries) {
+            if (!entry.endsWith('.compressing.mp4')) continue;
+            const fullPath = path.join(UPLOAD_DIR, entry);
+            try {
+                const stat = await fs.stat(fullPath);
+                bytes += stat.size;
+                await fs.unlink(fullPath);
+                removed += 1;
+            } catch {
+                // ignore
+            }
+        }
+        if (removed > 0) {
+            console.log(`[startup] hapus ${removed} file kompresi orphan (${Math.round(bytes / 1024 / 1024)} MB).`);
+        }
+    } catch {
+        // ignore
+    }
+
+    try {
+        const videos = await readVideos();
+        let resetCount = 0;
+        for (const video of videos) {
+            if (video && (video.compressionStatus === 'compressing' || video.compressionStatus === 'queued')) {
+                video.compressionStatus = 'idle';
+                video.compressionError = video.compressionStatus === 'compressing'
+                    ? 'Server mati saat kompresi, dijadwalkan ulang.'
+                    : video.compressionError || null;
+                video.compressionUpdatedAt = new Date().toISOString();
+                resetCount += 1;
+            }
+        }
+        if (resetCount > 0) {
+            await saveVideos(videos);
+            console.log(`[startup] reset ${resetCount} compressionStatus stuck di compressing/queued ke idle.`);
+        }
+    } catch {
+        // ignore
+    }
+}
+
 async function backfillVideoCompression() {
     try {
         const videos = await readVideos();
@@ -3549,5 +3595,7 @@ ensureStorage().then(() => {
         }
     });
     backfillVideoThumbnails().catch(() => {});
-    backfillVideoCompression().catch(() => {});
+    cleanupOrphanCompressionArtifacts().then(() => {
+        backfillVideoCompression().catch(() => {});
+    }).catch(() => {});
 });

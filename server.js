@@ -480,6 +480,56 @@ async function readNetworkCounters() {
         // ignore
     }
 
+    // 4) `ip -s link` shell output (Termux fallback)
+    try {
+        const out = await execCommand('ip -s -o link');
+        if (out && out.trim()) {
+            let rx = 0;
+            let tx = 0;
+            let parsed = false;
+            const lines = out.split(/\r?\n/);
+            for (const line of lines) {
+                if (!line || line.includes(' lo ')) continue;
+                const numericGroups = line.match(/(\d+(?:\s+\d+)+)/g);
+                if (!numericGroups || numericGroups.length < 2) continue;
+                const rxNumbers = numericGroups[0].split(/\s+/).map(Number);
+                const txNumbers = numericGroups[1].split(/\s+/).map(Number);
+                if (!rxNumbers.length || !txNumbers.length) continue;
+                rx += Number(rxNumbers[0] || 0);
+                tx += Number(txNumbers[0] || 0);
+                parsed = true;
+            }
+            if (parsed) return { rx, tx, source: 'ip-link' };
+        }
+    } catch {
+        // ignore
+    }
+
+    // 5) Per-process counters: sum delta of node + ffmpeg from /proc/<pid>/net/dev (rare path)
+    try {
+        const out = await execCommand(`cat /proc/${process.pid}/net/dev 2>/dev/null`);
+        if (out && out.trim()) {
+            const lines = out.split(/\r?\n/).slice(2);
+            let rx = 0;
+            let tx = 0;
+            let parsed = false;
+            for (const line of lines) {
+                const cleaned = line.trim();
+                if (!cleaned || cleaned.startsWith('lo:')) continue;
+                const parts = cleaned.replace(':', ' ').trim().split(/\s+/);
+                const r = Number(parts[1] || 0);
+                const t = Number(parts[9] || 0);
+                if (!Number.isFinite(r) || !Number.isFinite(t)) continue;
+                rx += r;
+                tx += t;
+                parsed = true;
+            }
+            if (parsed) return { rx, tx, source: 'proc-pid-net-dev' };
+        }
+    } catch {
+        // ignore
+    }
+
     return null;
 }
 
@@ -1302,12 +1352,37 @@ function getRestoreSnapshot() {
     };
 }
 
-async function performRestore(record) {
+async function performRestore(record, { force = false } = {}) {
     const videoSnapshot = record.videoSnapshot;
     if (!videoSnapshot || !videoSnapshot.id) return { status: 'skipped', reason: 'no_snapshot' };
     if (!record.telegram || !record.telegram.messageId) return { status: 'skipped', reason: 'no_telegram' };
 
     const filePath = getVideoFilePath(videoSnapshot);
+
+    if (!force) {
+        try {
+            const existing = await fs.stat(filePath);
+            if (existing && existing.isFile() && existing.size > 0) {
+                restoreState.history.unshift({
+                    id: videoSnapshot.id,
+                    title: videoSnapshot.title || videoSnapshot.id,
+                    status: 'skipped',
+                    reason: 'already_exists',
+                    size: existing.size,
+                    finishedAt: Date.now()
+                });
+                restoreState.history = restoreState.history.slice(0, 30);
+                await updateBackupRecord(videoSnapshot.id, {
+                    status: 'restored',
+                    restoreSkippedAt: new Date().toISOString(),
+                    restoreReason: 'already_exists'
+                }).catch(() => {});
+                return { status: 'skipped', reason: 'already_exists', filePath };
+            }
+        } catch {
+            // file tidak ada, lanjut download
+        }
+    }
 
     restoreState.current = {
         id: videoSnapshot.id,
@@ -1392,7 +1467,7 @@ async function performRestore(record) {
     return { status: 'done', filePath };
 }
 
-function enqueueRestore(record) {
+function enqueueRestore(record, { force = false } = {}) {
     if (!record || !record.videoSnapshot || !record.videoSnapshot.id) {
         return Promise.resolve({ status: 'skipped', reason: 'no_video' });
     }
@@ -1405,12 +1480,13 @@ function enqueueRestore(record) {
     restoreState.queue.push({
         id,
         title: record.videoSnapshot.title || id,
-        queuedAt: Date.now()
+        queuedAt: Date.now(),
+        force
     });
 
     const queued = videoRestoreQueue.then(async () => {
         restoreState.queue = restoreState.queue.filter(item => item.id !== id);
-        return performRestore(record);
+        return performRestore(record, { force });
     });
 
     videoRestoreQueue = queued.catch(error => {
@@ -1985,6 +2061,32 @@ async function handleApi(req, res, url) {
 
         if (req.method === 'GET' && url.pathname === '/api/admin/restore-queue') {
             sendJson(res, 200, { restore: getRestoreSnapshot() });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/admin/network-debug') {
+            const counters = await readNetworkCounters();
+            const sample = await getNetworkSample();
+            const probes = {};
+            try {
+                await fs.access('/proc/net/dev');
+                probes.procNetDev = 'accessible';
+            } catch (error) {
+                probes.procNetDev = `error: ${error.code || error.message}`;
+            }
+            try {
+                const list = await fs.readdir('/sys/class/net');
+                probes.sysClassNet = list.join(', ');
+            } catch (error) {
+                probes.sysClassNet = `error: ${error.code || error.message}`;
+            }
+            try {
+                const ipOut = await execCommand('ip -s -o link');
+                probes.ipLink = ipOut ? `bytes: ${ipOut.length}` : 'empty';
+            } catch (error) {
+                probes.ipLink = `error: ${error.message}`;
+            }
+            sendJson(res, 200, { counters, sample, probes });
             return;
         }
 
@@ -2614,22 +2716,26 @@ async function handleApi(req, res, url) {
                 sendError(res, 404, 'Backup video tidak ditemukan.');
                 return;
             }
-            enqueueRestore(record).catch(() => {});
+            const body = await readJson(req).catch(() => ({}));
+            const force = Boolean(body && body.force);
+            enqueueRestore(record, { force }).catch(() => {});
             sendJson(res, 200, { ok: true, message: 'Restore dijadwalkan.', video: sanitizeVideo(record.videoSnapshot) });
             return;
         }
 
         if (req.method === 'POST' && url.pathname === '/api/admin/telegram-backups/restore-all') {
+            const body = await readJson(req).catch(() => ({}));
+            const force = Boolean(body && body.force);
             const backups = await readTelegramBackups();
             const records = Object.values(backups.videos || {})
                 .filter(record => record && record.telegram && record.videoSnapshot);
             let queued = 0;
             for (const record of records) {
                 if (videoRestorePending.has(record.videoSnapshot.id)) continue;
-                enqueueRestore(record).catch(() => {});
+                enqueueRestore(record, { force }).catch(() => {});
                 queued += 1;
             }
-            sendJson(res, 200, { ok: true, queued, message: `${queued} video dijadwalkan restore.` });
+            sendJson(res, 200, { ok: true, queued, message: `${queued} video dijadwalkan restore.${force ? ' (paksa download ulang)' : ''}` });
             return;
         }
 

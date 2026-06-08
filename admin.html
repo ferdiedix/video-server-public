@@ -2097,7 +2097,7 @@
                     }
 
                     const uploadId = await uploadVideoInChunks(file, text => singleSubmitBtn.innerText = text);
-                    singleSubmitBtn.innerText = 'Menyimpan...';
+                    singleSubmitBtn.innerText = 'Memfinalkan file...';
                     await finishUpload({
                         uploadId,
                         title: document.getElementById('inputTitle').value.trim(),
@@ -2155,6 +2155,7 @@
                         const uploadId = isImage
                             ? await uploadFileInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`, 'image')
                             : await uploadVideoInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`);
+                        folderSubmitBtn.innerText = `${index + 1}/${files.length} Memfinalkan file...`;
 
                         if (isImage) {
                             await finishImageUpload({

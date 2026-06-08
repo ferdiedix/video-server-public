@@ -804,7 +804,8 @@ function createAutoMediaBaseName(groupName, number) {
 }
 
 function hasAutoMediaFileName(fileName) {
-    return / @SiPalingLink \d+(?: \d+)?\.[^.]+$/i.test(String(fileName || ''));
+    const value = String(fileName || '');
+    return / @SiPalingLink \d+(?: \d+)?\.[^.]+$/i.test(value) || /^[a-f0-9]{32}\.[^.]+$/i.test(value);
 }
 
 function getStoredUploadFileName(video) {
@@ -2530,7 +2531,11 @@ async function handleApi(req, res, url) {
             }
 
             const uploadId = createId();
-            const tempPath = path.join(UPLOAD_DIR, `${uploadId}.part`);
+            const directExtension = uploadType === 'video' ? getExtension(fileName, mimeType) : '';
+            const directStoredFileName = uploadType === 'video' ? `${uploadId}${directExtension}` : '';
+            const tempPath = uploadType === 'video'
+                ? path.join(UPLOAD_DIR, directStoredFileName)
+                : path.join(UPLOAD_DIR, `${uploadId}.part`);
             const handle = await fs.open(tempPath, 'w');
             await handle.close();
 
@@ -2540,6 +2545,7 @@ async function handleApi(req, res, url) {
                 mimeType,
                 totalSize,
                 tempPath,
+                directStoredFileName,
                 receivedBytes: 0,
                 nextChunkIndex: 0,
                 receivedSegments: new Map(),
@@ -2848,11 +2854,13 @@ async function handleApi(req, res, url) {
                 ? videos.filter(video => video.folderId === folderId).length + 1
                 : videos.filter(video => !video.folderId).length + 1;
             const autoBaseName = createAutoMediaBaseName(folder ? folder.title : 'VIDEO', videoNumber);
-            const storedFileName = await createUniqueStoredFileName(UPLOAD_DIR, autoBaseName, extension);
+            const storedFileName = upload.directStoredFileName || await createUniqueStoredFileName(UPLOAD_DIR, autoBaseName, extension);
             const storedPath = path.join(UPLOAD_DIR, storedFileName);
             const displayTitle = folder ? autoBaseName : title;
 
-            await fs.rename(upload.tempPath, storedPath);
+            if (upload.tempPath !== storedPath) {
+                await fs.rename(upload.tempPath, storedPath);
+            }
             uploadSessions.delete(finishMatch[1]);
 
             const video = {

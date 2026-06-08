@@ -2604,6 +2604,16 @@ async function handleApi(req, res, url) {
                 return;
             }
 
+            if (upload.receivedSegments && upload.receivedSegments.get(offset) === length) {
+                req.resume();
+                sendJson(res, 200, {
+                    receivedBytes: upload.receivedBytes,
+                    accepted: { offset, length },
+                    duplicate: true
+                });
+                return;
+            }
+
             markUploadActive();
             try {
                 let received = 0;

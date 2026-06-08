@@ -1587,8 +1587,9 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
-                const chunkSize = 8 * 1024 * 1024;
-                const concurrency = 4;
+                const chunkSize = 24 * 1024 * 1024;
+                const concurrency = 8;
+                const maxAttempts = 12;
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',
@@ -1603,7 +1604,7 @@
                     async function uploadSegment(chunkIndex) {
                         const offset = chunkIndex * chunkSize;
                         const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-                        for (let attempt = 1; attempt <= 3; attempt += 1) {
+                        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
                             try {
                                 await api(`/api/admin/uploads/${start.uploadId}/segment`, {
                                     method: 'POST',
@@ -1618,8 +1619,9 @@
                                 progressLabel(`Mengupload ${file.name} ${Math.round((uploadedBytes / file.size) * 100)}%`);
                                 return;
                             } catch (error) {
-                                if (attempt >= 3) throw error;
-                                await new Promise(resolve => setTimeout(resolve, attempt * 700));
+                                if (attempt >= maxAttempts) throw error;
+                                progressLabel(`Koneksi tersendat, mencoba ulang ${file.name} (${attempt}/${maxAttempts})...`);
+                                await new Promise(resolve => setTimeout(resolve, Math.min(8000, attempt * 1200)));
                             }
                         }
                     }
@@ -1635,9 +1637,7 @@
                     await Promise.all(Array.from({ length: Math.min(concurrency, totalChunks) }, () => worker()));
                     return start.uploadId;
                 } catch (error) {
-                    console.warn('Upload binary gagal, fallback ke upload lama:', error);
-                    progressLabel(`Mengulang upload ${file.name} dengan mode kompatibel...`);
-                    return uploadFileLegacyInChunks(file, progressLabel, uploadType);
+                    throw error;
                 }
             }
 

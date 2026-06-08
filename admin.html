@@ -1587,7 +1587,7 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
-                const chunkSize = 6 * 1024 * 1024;
+                const chunkSize = 90 * 1024 * 1024;
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',

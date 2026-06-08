@@ -1904,7 +1904,9 @@ function readBody(req) {
         const chunks = [];
 
         req.on('data', chunk => {
-            size += chunk.length;
+            const len = chunk && chunk.length ? chunk.length : 0;
+            size += len;
+            try { appNetworkCounter.rx += len; } catch {}
             if (size > MAX_JSON_BYTES) {
                 reject(new Error('Payload terlalu besar.'));
                 req.destroy();

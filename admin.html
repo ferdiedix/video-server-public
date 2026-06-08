@@ -1568,16 +1568,42 @@
                 const chunkSize = 1.5 * 1024 * 1024;
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 const maxRetries = 4;
+                const prefetchAhead = 3;
                 const start = await api('/api/admin/uploads/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, uploadType })
                 });
 
+                function readChunk(chunkIndex) {
+                    const slice = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
+                    return readBlobAsDataUrl(slice);
+                }
+
+                // Pre-encode chunks in parallel (CPU-bound work) while POST-ing
+                // serially (server requires strict order). Keeps disk + base64
+                // pipeline saturated even when network has latency.
+                const prefetched = new Map();
+                let prefetchIndex = 0;
+                function fillPrefetch() {
+                    while (prefetchIndex < totalChunks && prefetched.size < prefetchAhead) {
+                        const idx = prefetchIndex;
+                        prefetchIndex += 1;
+                        prefetched.set(idx, readChunk(idx).catch(error => Promise.reject(error)));
+                    }
+                }
+                fillPrefetch();
+
                 for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
-                    const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
-                    const dataUrl = await readBlobAsDataUrl(chunk);
-                    progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
+                    let dataUrlPromise = prefetched.get(chunkIndex);
+                    if (!dataUrlPromise) {
+                        dataUrlPromise = readChunk(chunkIndex);
+                    } else {
+                        prefetched.delete(chunkIndex);
+                    }
+                    fillPrefetch();
+
+                    const dataUrl = await dataUrlPromise;
 
                     let lastError = null;
                     for (let attempt = 0; attempt < maxRetries; attempt += 1) {
@@ -1599,7 +1625,10 @@
                     if (lastError) {
                         throw lastError;
                     }
+
+                    progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
                 }
+
                 return start.uploadId;
             }
 

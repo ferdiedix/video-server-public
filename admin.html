@@ -1564,7 +1564,7 @@
                 });
             }
 
-            async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
+            async function uploadFileLegacyInChunks(file, progressLabel, uploadType = 'video') {
                 const chunkSize = 6 * 1024 * 1024;
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 const start = await api('/api/admin/uploads/start', {
@@ -1584,6 +1584,38 @@
                     });
                 }
                 return start.uploadId;
+            }
+
+            async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
+                const chunkSize = 6 * 1024 * 1024;
+                const totalChunks = Math.ceil(file.size / chunkSize);
+                const start = await api('/api/admin/uploads/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, uploadType })
+                });
+
+                try {
+                    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                        const offset = chunkIndex * chunkSize;
+                        const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+                        progressLabel(`Mengupload ${file.name} ${Math.round(((chunkIndex + 1) / totalChunks) * 100)}%`);
+                        await api(`/api/admin/uploads/${start.uploadId}/segment`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/octet-stream',
+                                'X-Offset': String(offset),
+                                'X-Length': String(chunk.size)
+                            },
+                            body: chunk
+                        });
+                    }
+                    return start.uploadId;
+                } catch (error) {
+                    console.warn('Upload binary gagal, fallback ke upload lama:', error);
+                    progressLabel(`Mengulang upload ${file.name} dengan mode kompatibel...`);
+                    return uploadFileLegacyInChunks(file, progressLabel, uploadType);
+                }
             }
 
             async function uploadVideoInChunks(file, progressLabel) {

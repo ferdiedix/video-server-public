@@ -39,6 +39,8 @@ const COMPRESS_AUDIO_BITRATE = String(process.env.COMPRESS_AUDIO_BITRATE || '128
 const COMPRESS_MIN_SAVING_RATIO = Math.max(0, Math.min(0.95, Number(process.env.COMPRESS_MIN_SAVING || 0.15)));
 const COMPRESS_CPU_PERCENT = Math.max(10, Math.min(100, Number(process.env.COMPRESS_CPU_PERCENT || DEFAULT_COMPRESS_CPU)));
 const COMPRESS_NICENESS = Math.max(0, Math.min(19, Number(process.env.COMPRESS_NICENESS || 10)));
+const COMPRESS_AUTO_ON_UPLOAD = String(process.env.COMPRESS_AUTO_ON_UPLOAD || 'false').toLowerCase() === 'true';
+const COMPRESS_AUTO_BACKFILL = String(process.env.COMPRESS_AUTO_BACKFILL || 'false').toLowerCase() === 'true';
 const BANDWIDTH_PER_USER_KBPS = Math.max(0, Number(process.env.BANDWIDTH_PER_USER_KBPS || 1500));
 const BANDWIDTH_PER_USER_BPS = BANDWIDTH_PER_USER_KBPS * 1024;
 const BANDWIDTH_BURST_MULTIPLIER = Math.max(1, Number(process.env.BANDWIDTH_BURST_MULTIPLIER || 8));
@@ -2585,37 +2587,44 @@ async function handleApi(req, res, url) {
 
             markUploadActive();
             try {
-                const chunks = [];
                 let received = 0;
                 let aborted = false;
+                const writeStream = fsNative.createWriteStream(upload.tempPath, {
+                    flags: 'r+',
+                    start: offset
+                });
                 await new Promise((resolve, reject) => {
                     req.on('data', chunk => {
                         if (aborted) return;
                         received += chunk.length;
                         if (received > length + 1024) {
                             aborted = true;
+                            try { writeStream.destroy(); } catch {}
                             reject(new Error('Body lebih besar dari yang diumumkan.'));
                             try { req.destroy(); } catch {}
                             return;
                         }
-                        chunks.push(chunk);
                         try { appNetworkCounter.rx += chunk.length; } catch {}
                     });
-                    req.on('end', resolve);
                     req.on('error', reject);
+                    writeStream.on('error', reject);
+                    writeStream.on('finish', resolve);
+                    req.pipe(writeStream);
                 });
 
-                const buffer = Buffer.concat(chunks, received);
-                if (buffer.length !== length) {
-                    sendError(res, 400, `Panjang body (${buffer.length}) tidak cocok dengan x-length (${length}).`);
+                if (aborted) {
                     return;
                 }
 
-                const handle = await fs.open(upload.tempPath, 'r+');
-                try {
-                    await handle.write(buffer, 0, buffer.length, offset);
-                } finally {
-                    await handle.close();
+                if (received !== length) {
+                    sendError(res, 400, `Panjang body (${received}) tidak cocok dengan x-length (${length}).`);
+                    return;
+                }
+
+                const stat = await fs.stat(upload.tempPath);
+                if (stat.size > upload.totalSize) {
+                    sendError(res, 400, 'Ukuran upload melebihi file asli.');
+                    return;
                 }
 
                 upload.receivedSegments.set(offset, length);
@@ -2805,7 +2814,9 @@ async function handleApi(req, res, url) {
 
             await saveVideos(videos);
             ensureVideoThumbnail(video).catch(() => {});
-            scheduleVideoCompressionIfNeeded(video).catch(() => {});
+            if (COMPRESS_AUTO_ON_UPLOAD) {
+                scheduleVideoCompressionIfNeeded(video).catch(() => {});
+            }
             scheduleTelegramBackup(video).catch(() => {});
             sendJson(res, 201, { video: sanitizeVideo(video) });
             return;
@@ -3700,6 +3711,8 @@ ensureStorage().then(() => {
     });
     backfillVideoThumbnails().catch(() => {});
     cleanupOrphanCompressionArtifacts().then(() => {
-        backfillVideoCompression().catch(() => {});
+        if (COMPRESS_AUTO_BACKFILL) {
+            backfillVideoCompression().catch(() => {});
+        }
     }).catch(() => {});
 });

@@ -2148,34 +2148,65 @@
                         body: JSON.stringify({ title: document.getElementById('folderTitle').value.trim() })
                     });
 
+                    const finalTasks = [];
+                    let finalChain = Promise.resolve();
+                    let finalDone = 0;
+                    let finalPending = 0;
+
+                    function setFolderProgress(index, text) {
+                        const finalInfo = finalPending > 0
+                            ? ` | final belakang: ${finalPending} jalan, ${finalDone} selesai`
+                            : (finalDone > 0 ? ` | final selesai: ${finalDone}` : '');
+                        folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}${finalInfo}`;
+                    }
+
+                    function queueFinalize(index, task) {
+                        finalPending += 1;
+                        setFolderProgress(index, 'Upload lanjut, final berjalan...');
+                        const queued = finalChain.then(async () => {
+                            setFolderProgress(index, 'Memfinalkan file di belakang...');
+                            await task();
+                            finalDone += 1;
+                        }).finally(() => {
+                            finalPending = Math.max(0, finalPending - 1);
+                            setFolderProgress(index, 'Final selesai, lanjut...');
+                        });
+                        finalChain = queued.catch(() => {});
+                        finalTasks.push(queued);
+                    }
+
                     for (let index = 0; index < files.length; index += 1) {
                         const file = files[index];
                         const isImage = file.type.startsWith('image/');
                         const directLinks = mode === 'same' ? [sameAdUrl] : differentUrlsByFile[index];
                         const uploadId = isImage
-                            ? await uploadFileInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`, 'image')
-                            : await uploadVideoInChunks(file, text => folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`);
-                        folderSubmitBtn.innerText = `${index + 1}/${files.length} Memfinalkan file...`;
+                            ? await uploadFileInChunks(file, text => setFolderProgress(index, text), 'image')
+                            : await uploadVideoInChunks(file, text => setFolderProgress(index, text));
 
                         if (isImage) {
-                            await finishImageUpload({
-                                uploadId,
-                                title: file.name.replace(/\.[^/.]+$/, ''),
-                                adUrl: directLinks[0],
-                                adUrls: directLinks,
-                                requiredClicks,
-                                folderId: folderData.folder.id
-                            });
+                            queueFinalize(index, () => finishImageUpload({
+                                    uploadId,
+                                    title: file.name.replace(/\.[^/.]+$/, ''),
+                                    adUrl: directLinks[0],
+                                    adUrls: directLinks,
+                                    requiredClicks,
+                                    folderId: folderData.folder.id
+                                }));
                         } else {
-                            await finishUpload({
-                                uploadId,
-                                title: file.name.replace(/\.[^/.]+$/, ''),
-                                adUrl: directLinks[0],
-                                adUrls: directLinks,
-                                requiredClicks,
-                                folderId: folderData.folder.id
-                            });
+                            queueFinalize(index, () => finishUpload({
+                                    uploadId,
+                                    title: file.name.replace(/\.[^/.]+$/, ''),
+                                    adUrl: directLinks[0],
+                                    adUrls: directLinks,
+                                    requiredClicks,
+                                    folderId: folderData.folder.id
+                                }));
                         }
+                    }
+
+                    if (finalTasks.length) {
+                        folderSubmitBtn.innerText = `Menunggu finalisasi ${finalTasks.length} file...`;
+                        await Promise.all(finalTasks);
                     }
 
                     folderForm.reset();

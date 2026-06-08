@@ -180,6 +180,51 @@ function chooseLatestPerVideo(records) {
     return [...map.values()];
 }
 
+async function resolveBackupChat(client, target) {
+    const trimmed = String(target || '').trim();
+    if (!trimmed) throw new Error('Chat target kosong.');
+    if (/^me$|^self$/i.test(trimmed)) {
+        throw new Error('TELEGRAM_BACKUP_CHAT tidak boleh "me" atau "self". Pakai username atau ID grup/channel yang berisi backup.');
+    }
+
+    const isGroupLike = entity => {
+        if (!entity) return false;
+        const className = entity.className || (entity.constructor ? entity.constructor.name : '');
+        return className === 'Channel' || className === 'Chat' || className === 'ChannelFull' || className === 'ChatFull';
+    };
+
+    const numericMatch = trimmed.match(/^-?\d+$/);
+    if (numericMatch) {
+        const entity = await client.getEntity(trimmed);
+        if (!isGroupLike(entity)) {
+            throw new Error(`Chat ID ${trimmed} resolve ke ${entity && entity.className ? entity.className : 'entity'}, bukan grup/channel. Pastikan ID benar (channel/supergroup biasanya diawali -100).`);
+        }
+        return entity;
+    }
+
+    const usernameClean = trimmed.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').replace(/^t\.me\//i, '');
+    try {
+        const result = await client.invoke(new Api.contacts.ResolveUsername({ username: usernameClean }));
+        if (result && result.chats && result.chats.length) {
+            const channelOrGroup = result.chats.find(isGroupLike);
+            if (!channelOrGroup) {
+                throw new Error(`Username @${usernameClean} resolve, tapi tidak ke channel/grup yang valid.`);
+            }
+            return channelOrGroup;
+        }
+        if (result && result.users && result.users.length) {
+            throw new Error(`Username @${usernameClean} ternyata milik user, bukan grup/channel. Pakai username atau ID grup yang benar.`);
+        }
+        throw new Error(`Username @${usernameClean} tidak menghasilkan entity apapun.`);
+    } catch (error) {
+        const fallback = await client.getEntity(trimmed);
+        if (!isGroupLike(fallback)) {
+            throw new Error(`@${usernameClean} resolve ke ${fallback && fallback.className ? fallback.className : 'entity tidak dikenal'}, bukan grup/channel. Detail: ${error.message || error}`);
+        }
+        return fallback;
+    }
+}
+
 async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
     if (!loadGramJs()) {
         throw new Error('GramJS belum terpasang.');
@@ -199,7 +244,7 @@ async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
 
     let chat;
     try {
-        chat = await client.getEntity(config.backupChat);
+        chat = await resolveBackupChat(client, config.backupChat);
     } catch (error) {
         await client.disconnect();
         throw new Error(`Gagal mengambil entity chat ${config.backupChat}: ${error.message || error}`);

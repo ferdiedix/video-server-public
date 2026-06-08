@@ -365,6 +365,41 @@ function execCommand(command) {
     });
 }
 
+let rootAvailability = null;
+async function hasRootAccess() {
+    if (rootAvailability !== null) return rootAvailability;
+    try {
+        const out = await new Promise(resolve => {
+            childProcess.exec('su -c id', { timeout: 4000 }, (error, stdout) => {
+                if (error) {
+                    resolve('');
+                    return;
+                }
+                resolve(stdout || '');
+            });
+        });
+        rootAvailability = /uid=0/.test(out);
+    } catch {
+        rootAvailability = false;
+    }
+    if (rootAvailability) {
+        console.log('[root] su access granted - elevated /proc reads enabled.');
+    }
+    return rootAvailability;
+}
+
+function execCommandRoot(command) {
+    return new Promise(resolve => {
+        childProcess.exec(`su -c ${JSON.stringify(command)}`, { timeout: 4000 }, (error, stdout) => {
+            if (error) {
+                resolve('');
+                return;
+            }
+            resolve(stdout || '');
+        });
+    });
+}
+
 async function getStorageStatus() {
     const output = await execCommand(`df -k "${ROOT}"`);
     const lines = output.trim().split(/\r?\n/);
@@ -408,6 +443,33 @@ async function getStorageStatus() {
 }
 
 async function readNetworkCounters() {
+    // 0) root su -c cat /proc/net/dev (kalau root tersedia)
+    if (IS_ANDROID && await hasRootAccess()) {
+        try {
+            const raw = await execCommandRoot('cat /proc/net/dev');
+            if (raw && raw.trim()) {
+                const lines = raw.split(/\r?\n/).slice(2);
+                let rx = 0;
+                let tx = 0;
+                let parsed = false;
+                for (const line of lines) {
+                    const cleaned = line.trim();
+                    if (!cleaned || cleaned.startsWith('lo:')) continue;
+                    const parts = cleaned.replace(':', ' ').trim().split(/\s+/);
+                    const r = Number(parts[1] || 0);
+                    const t = Number(parts[9] || 0);
+                    if (!Number.isFinite(r) || !Number.isFinite(t)) continue;
+                    rx += r;
+                    tx += t;
+                    parsed = true;
+                }
+                if (parsed) return { rx, tx, source: 'su-proc-net-dev' };
+            }
+        } catch {
+            // ignore
+        }
+    }
+
     // 1) /proc/net/dev (works on most Linux/Termux when accessible)
     try {
         const raw = await fs.readFile('/proc/net/dev', 'utf8');

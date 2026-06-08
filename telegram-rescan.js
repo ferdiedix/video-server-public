@@ -236,8 +236,26 @@ async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
     }
 
     const client = new TelegramClient(new StringSession(config.session), config.apiId, config.apiHash, {
-        connectionRetries: 5
+        connectionRetries: 5,
+        autoReconnect: false
     });
+
+    if (client._log && client._log.canSend) {
+        try {
+            const originalCanSend = client._log.canSend.bind(client._log);
+            client._log.canSend = level => {
+                const lvl = String(level || '').toLowerCase();
+                if (lvl === 'warn' || lvl === 'info' || lvl === 'debug') return false;
+                return originalCanSend(level);
+            };
+        } catch {}
+    }
+
+    async function safeDisconnect() {
+        try { if (client._updateLoop && client._updateLoop.cancel) client._updateLoop.cancel(); } catch {}
+        try { if (client.destroy) { await client.destroy(); return; } } catch {}
+        try { await client.disconnect(); } catch {}
+    }
 
     logger('Menghubungkan ke Telegram...');
     await client.connect();
@@ -246,7 +264,7 @@ async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
     try {
         chat = await resolveBackupChat(client, config.backupChat);
     } catch (error) {
-        await client.disconnect();
+        await safeDisconnect();
         throw new Error(`Gagal mengambil entity chat ${config.backupChat}: ${error.message || error}`);
     }
 
@@ -291,7 +309,7 @@ async function rescan({ logger = msg => console.log(`[rescan] ${msg}`) } = {}) {
         }
     }
 
-    await client.disconnect();
+    await safeDisconnect();
 
     const filtered = chooseLatestPerVideo(allRecords);
     logger(`Total backup yang valid: ${allRecords.length}. Setelah dedup per video: ${filtered.length}.`);

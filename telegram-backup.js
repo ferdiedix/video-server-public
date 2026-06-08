@@ -55,10 +55,45 @@ async function getClient() {
     }
 
     const client = new TelegramClient(new StringSession(config.session), config.apiId, config.apiHash, {
-        connectionRetries: 5
+        connectionRetries: 5,
+        useWSS: false,
+        autoReconnect: false
     });
+
+    if (client.setLogLevel) {
+        try { client.setLogLevel('error'); } catch {}
+    }
+    if (client._log && client._log.canSend) {
+        try {
+            const originalCanSend = client._log.canSend.bind(client._log);
+            client._log.canSend = level => {
+                const lvl = String(level || '').toLowerCase();
+                if (lvl === 'warn' || lvl === 'info' || lvl === 'debug') return false;
+                return originalCanSend(level);
+            };
+        } catch {}
+    }
+
     await client.connect();
     return { client, config };
+}
+
+async function safeDisconnect(client) {
+    if (!client) return;
+    try {
+        if (client._updateLoop && client._updateLoop.cancel) {
+            client._updateLoop.cancel();
+        }
+    } catch {}
+    try {
+        if (client.destroy) {
+            await client.destroy();
+            return;
+        }
+    } catch {}
+    try {
+        await client.disconnect();
+    } catch {}
 }
 
 async function ensureForumTopic(client, chat, folder, existingTopic) {
@@ -138,7 +173,7 @@ async function uploadVideoBackup({ video, folder, filePath, existingTopic }) {
         ...options
     });
 
-    await client.disconnect();
+    await safeDisconnect(client);
 
     return {
         telegramChat: String(config.backupChat),
@@ -175,7 +210,7 @@ async function restoreVideoBackup({ backup, outputPath, onProgress }) {
     }
 
     await client.downloadMedia(message, downloadOptions);
-    await client.disconnect();
+    await safeDisconnect(client);
 
     return {
         restoredAt: new Date().toISOString(),

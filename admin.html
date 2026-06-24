@@ -1564,6 +1564,39 @@
                 });
             }
 
+            async function uploadSingleStream(file, progressLabel, uploadType = 'video') {
+                const start = await api('/api/admin/uploads/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, uploadType })
+                });
+
+                return new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.upload.addEventListener('progress', e => {
+                        if (e.lengthComputable) {
+                            progressLabel(`Mengupload ${file.name} ${Math.round((e.loaded / e.total) * 100)}%`);
+                        }
+                    });
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            resolve(start.uploadId);
+                        } else {
+                            let msg = 'Upload gagal';
+                            try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+                            reject(new Error(msg));
+                        }
+                    });
+                    xhr.addEventListener('error', () => reject(new Error('Network error')));
+                    xhr.addEventListener('abort', () => reject(new Error('Upload dibatalkan')));
+
+                    xhr.open('POST', `/api/admin/uploads/${start.uploadId}/upload`);
+                    const storedToken = sessionStorage.getItem(TOKEN_KEY);
+                    if (storedToken) xhr.setRequestHeader('Authorization', `Bearer ${storedToken}`);
+                    xhr.send(file);
+                });
+            }
+
             async function uploadFileLegacyInChunks(file, progressLabel, uploadType = 'video') {
                 const chunkSize = 6 * 1024 * 1024;
                 const totalChunks = Math.ceil(file.size / chunkSize);
@@ -1587,6 +1620,11 @@
             }
 
             async function uploadFileInChunks(file, progressLabel, uploadType = 'video') {
+                const maxSingleUpload = 90 * 1024 * 1024;
+                if (file.size < maxSingleUpload) {
+                    return uploadSingleStream(file, progressLabel, uploadType);
+                }
+
                 const chunkSize = 24 * 1024 * 1024;
                 const concurrency = 8;
                 const maxAttempts = 12;

@@ -2098,16 +2098,18 @@
 
                     const uploadId = await uploadVideoInChunks(file, text => singleSubmitBtn.innerText = text);
                     singleSubmitBtn.innerText = 'Memfinalkan file...';
-                    await finishUpload({
+                    const result = await finishUpload({
                         uploadId,
                         title: document.getElementById('inputTitle').value.trim(),
                         adUrl: directLinks[0],
                         adUrls: directLinks,
                         requiredClicks
                     });
+                    singleSubmitBtn.innerText = 'Membackup ke Telegram...';
+                    await api(`/api/admin/telegram-backups/videos/${result.video.id}`, { method: 'POST' });
                     singleForm.reset();
                     await loadData();
-                    showToast('Video berhasil ditambahkan.');
+                    showToast('Video berhasil ditambahkan & backup dijadwalkan.');
                 } catch (error) {
                     showToast(error.message || 'Upload gagal.', true);
                 } finally {
@@ -2152,6 +2154,7 @@
                     let finalChain = Promise.resolve();
                     let finalDone = 0;
                     let finalPending = 0;
+                    const newVideoIds = [];
 
                     function setFolderProgress(index, text) {
                         const finalInfo = finalPending > 0
@@ -2165,14 +2168,15 @@
                         setFolderProgress(index, 'Upload lanjut, final berjalan...');
                         const queued = finalChain.then(async () => {
                             setFolderProgress(index, 'Memfinalkan file di belakang...');
-                            await task();
+                            const result = await task();
                             finalDone += 1;
+                            return result;
                         }).finally(() => {
                             finalPending = Math.max(0, finalPending - 1);
-                            setFolderProgress(index, 'Final selesai, lanjut...');
                         });
                         finalChain = queued.catch(() => {});
                         finalTasks.push(queued);
+                        return queued;
                     }
 
                     for (let index = 0; index < files.length; index += 1) {
@@ -2193,20 +2197,33 @@
                                     folderId: folderData.folder.id
                                 }));
                         } else {
-                            queueFinalize(index, () => finishUpload({
+                            queueFinalize(index, async () => {
+                                const result = await finishUpload({
                                     uploadId,
                                     title: file.name.replace(/\.[^/.]+$/, ''),
                                     adUrl: directLinks[0],
                                     adUrls: directLinks,
                                     requiredClicks,
                                     folderId: folderData.folder.id
-                                }));
+                                });
+                                if (result && result.video && result.video.id) newVideoIds.push(result.video.id);
+                                return result;
+                            });
                         }
                     }
 
                     if (finalTasks.length) {
                         folderSubmitBtn.innerText = `Menunggu finalisasi ${finalTasks.length} file...`;
                         await Promise.all(finalTasks);
+                    }
+
+                    if (newVideoIds.length) {
+                        folderSubmitBtn.innerText = 'Membackup ke Telegram...';
+                        await api('/api/admin/telegram-backups/backup-all', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ videoIds: newVideoIds })
+                        });
                     }
 
                     folderForm.reset();

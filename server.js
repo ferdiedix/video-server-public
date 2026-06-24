@@ -2887,7 +2887,6 @@ async function handleApi(req, res, url) {
             if (COMPRESS_AUTO_ON_UPLOAD) {
                 scheduleVideoCompressionIfNeeded(video).catch(() => {});
             }
-            scheduleTelegramBackup(video).catch(() => {});
             sendJson(res, 201, { video: sanitizeVideo(video) });
             return;
         }
@@ -3024,24 +3023,25 @@ async function handleApi(req, res, url) {
             await saveVideos(videos);
             ensureVideoThumbnail(clip).catch(() => {});
             scheduleVideoCompressionIfNeeded(clip).catch(() => {});
-            scheduleTelegramBackup(clip).catch(() => {});
             sendJson(res, 201, { video: sanitizeVideo(clip), downloadUrl: clip.videoUrl });
             return;
         }
 
         if (req.method === 'POST' && url.pathname === '/api/admin/telegram-backups/backup-all') {
+            const body = await readJson(req).catch(() => ({}));
+            const videoIds = Array.isArray(body.videoIds) ? body.videoIds.map(String) : null;
             const videos = await readVideos();
             let queued = 0;
             for (const video of videos) {
-                if (video && video.videoUrl) {
-                    queued += 1;
-                    scheduleTelegramBackup(video).catch(error => {
-                        updateBackupRecord(video.id, {
-                            status: 'failed',
-                            error: error.message || 'Backup Telegram gagal.'
-                        }).catch(() => {});
-                    });
-                }
+                if (!video || !video.videoUrl) continue;
+                if (videoIds && !videoIds.includes(video.id) && !videoIds.includes(video.shortCode)) continue;
+                queued += 1;
+                scheduleTelegramBackup(video).catch(error => {
+                    updateBackupRecord(video.id, {
+                        status: 'failed',
+                        error: error.message || 'Backup Telegram gagal.'
+                    }).catch(() => {});
+                });
             }
             sendJson(res, 200, { ok: true, queued, message: `${queued} video dijadwalkan backup.` });
             return;

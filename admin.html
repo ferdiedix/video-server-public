@@ -2188,38 +2188,35 @@
                         body: JSON.stringify({ title: document.getElementById('folderTitle').value.trim() })
                     });
 
-                    // === FASE 1: Upload semua file paralel (max 3 bersamaan) ===
+                    // === FASE 1: Upload semua file secara sequential ===
                     const uploads = new Array(files.length);
-                    let completedUploads = 0;
-                    let nextUploadIndex = 0;
-                    const UPLOAD_CONCURRENCY = 3;
-
-                    async function uploadWorker() {
-                        while (nextUploadIndex < files.length) {
-                            const idx = nextUploadIndex;
-                            nextUploadIndex += 1;
-                            const file = files[idx];
-                            const isImage = file.type.startsWith('image/');
-                            const directLinks = mode === 'same' ? [sameAdUrl] : differentUrlsByFile[idx];
-                            const uploadId = isImage
-                                ? await uploadFileInChunks(file, () => {}, 'image')
-                                : await uploadVideoInChunks(file, () => {});
-                            uploads[idx] = {
-                                uploadId,
-                                isImage,
-                                title: file.name.replace(/\.[^/.]+$/, ''),
-                                adUrl: directLinks[0],
-                                adUrls: directLinks,
-                                requiredClicks,
-                                folderId: folderData.folder.id
-                            };
-                            completedUploads += 1;
-                            folderSubmitBtn.innerText = `Upload ${completedUploads}/${files.length} selesai...`;
+                    for (let index = 0; index < files.length; index += 1) {
+                        const file = files[index];
+                        const isImage = file.type.startsWith('image/');
+                        const directLinks = mode === 'same' ? [sameAdUrl] : differentUrlsByFile[index];
+                        folderSubmitBtn.innerText = `${index + 1}/${files.length} Mengupload ${file.name}...`;
+                        const uploadId = isImage
+                            ? await uploadFileInChunks(file, text => {
+                                folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`;
+                            }, 'image')
+                            : await uploadVideoInChunks(file, text => {
+                                folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`;
+                            });
+                        uploads[index] = {
+                            uploadId,
+                            isImage,
+                            title: file.name.replace(/\.[^/.]+$/, ''),
+                            adUrl: directLinks[0],
+                            adUrls: directLinks,
+                            requiredClicks,
+                            folderId: folderData.folder.id
+                        };
+                        // Beri jeda supaya browser + HP sempat bersihkan buffer & koneksi
+                        if (index < files.length - 1) {
+                            folderSubmitBtn.innerText = `${index + 1}/${files.length} selesai, menunggu jaringan...`;
+                            await new Promise(r => setTimeout(r, 500));
                         }
                     }
-
-                    folderSubmitBtn.innerText = `Upload ${files.length} file paralel (max ${UPLOAD_CONCURRENCY})...`;
-                    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, () => uploadWorker()));
 
                     // === FASE 2: Finalisasi semua file ===
                     const newVideoIds = [];

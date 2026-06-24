@@ -2536,8 +2536,8 @@ async function handleApi(req, res, url) {
             const tempPath = uploadType === 'video'
                 ? path.join(UPLOAD_DIR, directStoredFileName)
                 : path.join(UPLOAD_DIR, `${uploadId}.part`);
-            const handle = await fs.open(tempPath, 'w');
-            await handle.close();
+            // File tidak dibuat di sini agar storage HP tidak tersendat.
+            // Endpoint /upload akan create writeStream saat data masuk.
 
             uploadSessions.set(uploadId, {
                 uploadType,
@@ -3771,7 +3771,9 @@ async function backfillVideoThumbnails() {
 }
 
 ensureStorage().then(() => {
-    http.createServer(handleRequest).listen(PORT, () => {
+    const server = http.createServer(handleRequest);
+    server.keepAliveTimeout = 120000; // 2 menit supaya browser reuse koneksi
+    server.listen(PORT, () => {
         console.log(`Server jalan di http://localhost:${PORT}`);
         console.log(`Admin panel: http://localhost:${PORT}/admin`);
         console.log(`Halaman user: http://localhost:${PORT}/`);

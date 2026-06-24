@@ -2150,73 +2150,59 @@
                         body: JSON.stringify({ title: document.getElementById('folderTitle').value.trim() })
                     });
 
-                    const finalTasks = [];
-                    let finalChain = Promise.resolve();
-                    let finalDone = 0;
-                    let finalPending = 0;
-                    const newVideoIds = [];
-
-                    function setFolderProgress(index, text) {
-                        const finalInfo = finalPending > 0
-                            ? ` | final belakang: ${finalPending} jalan, ${finalDone} selesai`
-                            : (finalDone > 0 ? ` | final selesai: ${finalDone}` : '');
-                        folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}${finalInfo}`;
-                    }
-
-                    function queueFinalize(index, task) {
-                        finalPending += 1;
-                        setFolderProgress(index, 'Upload lanjut, final berjalan...');
-                        const queued = finalChain.then(async () => {
-                            setFolderProgress(index, 'Memfinalkan file di belakang...');
-                            const result = await task();
-                            finalDone += 1;
-                            return result;
-                        }).finally(() => {
-                            finalPending = Math.max(0, finalPending - 1);
-                        });
-                        finalChain = queued.catch(() => {});
-                        finalTasks.push(queued);
-                        return queued;
-                    }
-
+                    // === FASE 1: Upload semua file ===
+                    const uploads = [];
                     for (let index = 0; index < files.length; index += 1) {
                         const file = files[index];
                         const isImage = file.type.startsWith('image/');
                         const directLinks = mode === 'same' ? [sameAdUrl] : differentUrlsByFile[index];
+                        folderSubmitBtn.innerText = `${index + 1}/${files.length} Mengupload ${file.name}...`;
                         const uploadId = isImage
-                            ? await uploadFileInChunks(file, text => setFolderProgress(index, text), 'image')
-                            : await uploadVideoInChunks(file, text => setFolderProgress(index, text));
-
-                        if (isImage) {
-                            queueFinalize(index, () => finishImageUpload({
-                                    uploadId,
-                                    title: file.name.replace(/\.[^/.]+$/, ''),
-                                    adUrl: directLinks[0],
-                                    adUrls: directLinks,
-                                    requiredClicks,
-                                    folderId: folderData.folder.id
-                                }));
-                        } else {
-                            queueFinalize(index, async () => {
-                                const result = await finishUpload({
-                                    uploadId,
-                                    title: file.name.replace(/\.[^/.]+$/, ''),
-                                    adUrl: directLinks[0],
-                                    adUrls: directLinks,
-                                    requiredClicks,
-                                    folderId: folderData.folder.id
-                                });
-                                if (result && result.video && result.video.id) newVideoIds.push(result.video.id);
-                                return result;
+                            ? await uploadFileInChunks(file, text => {
+                                folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`;
+                            }, 'image')
+                            : await uploadVideoInChunks(file, text => {
+                                folderSubmitBtn.innerText = `${index + 1}/${files.length} ${text}`;
                             });
+                        uploads.push({
+                            uploadId,
+                            isImage,
+                            title: file.name.replace(/\.[^/.]+$/, ''),
+                            adUrl: directLinks[0],
+                            adUrls: directLinks,
+                            requiredClicks,
+                            folderId: folderData.folder.id
+                        });
+                    }
+
+                    // === FASE 2: Finalisasi semua file ===
+                    const newVideoIds = [];
+                    for (let index = 0; index < uploads.length; index += 1) {
+                        const u = uploads[index];
+                        folderSubmitBtn.innerText = `Finalisasi ${index + 1}/${uploads.length} ${u.title}...`;
+                        if (u.isImage) {
+                            await finishImageUpload({
+                                uploadId: u.uploadId,
+                                title: u.title,
+                                adUrl: u.adUrl,
+                                adUrls: u.adUrls,
+                                requiredClicks: u.requiredClicks,
+                                folderId: u.folderId
+                            });
+                        } else {
+                            const result = await finishUpload({
+                                uploadId: u.uploadId,
+                                title: u.title,
+                                adUrl: u.adUrl,
+                                adUrls: u.adUrls,
+                                requiredClicks: u.requiredClicks,
+                                folderId: u.folderId
+                            });
+                            if (result && result.video && result.video.id) newVideoIds.push(result.video.id);
                         }
                     }
 
-                    if (finalTasks.length) {
-                        folderSubmitBtn.innerText = `Menunggu finalisasi ${finalTasks.length} file...`;
-                        await Promise.all(finalTasks);
-                    }
-
+                    // === FASE 3: Backup semua video baru sekaligus ===
                     if (newVideoIds.length) {
                         folderSubmitBtn.innerText = 'Membackup ke Telegram...';
                         await api('/api/admin/telegram-backups/backup-all', {

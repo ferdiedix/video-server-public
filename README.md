@@ -307,12 +307,3 @@ Generate Telegram session:
 npm run telegram:auth
 ```
 
-Tidak ada build step. Edit `server.js`, `admin.html`, atau `pemutar_video_fokus (1).html`, lalu restart server.
-
-## License
-
-Project ini belum mendefinisikan lisensi eksplisit. Tambahkan file `LICENSE` jika ingin dipublikasikan dengan lisensi tertentu.
-
-## Author
-
-Dibuat untuk workflow upload dan distribusi video ringan dengan direct-link gating, Telegram backup, dan deployment hemat resource.
